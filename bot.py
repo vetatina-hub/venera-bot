@@ -2,13 +2,11 @@ import os
 import logging
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
-import anthropic
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 
 QUESTIONS = [
     {
@@ -78,7 +76,7 @@ RESULTS = {
     },
     "В": {
         "title": "🌸 Быть хорошей",
-        "text": "Ты чуткая, внимательная, всегда думаешь о других. Твоя доброта — это дар. Но где-то внутри живёт страх: 'А если я не понравлюсь?' Венера поможет тебе полюбить себя такой, какая ты есть — без масок."
+        "text": "Ты чуткая, внимательная, всегда думаешь о других. Твоя доброта — это дар. Но где-то внутри живёт страх: а если я не понравлюсь? Венера поможет тебе полюбить себя такой, какая ты есть — без масок."
     },
     "Г": {
         "title": "👑 Я достойна большего",
@@ -100,8 +98,10 @@ RESULTS = {
 
 Q1, Q2, Q3, Q4, Q5, Q6 = range(6)
 
+
 def get_keyboard(options):
     return ReplyKeyboardMarkup([[opt] for opt in options], resize_keyboard=True, one_time_keyboard=True)
+
 
 def determine_result(answers):
     counts = {"А": 0, "Б": 0, "В": 0, "Г": 0}
@@ -109,18 +109,19 @@ def determine_result(answers):
         letter = a[0]
         if letter in counts:
             counts[letter] += 1
-    
+
     max_count = max(counts.values())
     leaders = [k for k, v in counts.items() if v == max_count]
-    
+
     if len(leaders) == 1:
         return RESULTS.get(leaders[0], RESULTS["А"])
-    
+
     pair = "".join(sorted(leaders[:2]))
     if pair in RESULTS:
         return RESULTS[pair]
-    
+
     return RESULTS[leaders[0]]
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["answers"] = []
@@ -132,42 +133,42 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return Q1
 
-async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE, q_index: int, next_state):
-    answer = update.message.text
-    context.user_data["answers"].append(answer)
-    
-    if next_state == ConversationHandler.END:
-        return await send_result(update, context)
-    
-    await update.message.reply_text(
-        QUESTIONS[q_index]["text"],
-        reply_markup=get_keyboard(QUESTIONS[q_index]["options"])
-    )
-    return next_state
 
 async def q1(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    return await handle_answer(update, context, 1, Q2)
+    context.user_data["answers"].append(update.message.text)
+    await update.message.reply_text(QUESTIONS[1]["text"], reply_markup=get_keyboard(QUESTIONS[1]["options"]))
+    return Q2
+
 
 async def q2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    return await handle_answer(update, context, 2, Q3)
+    context.user_data["answers"].append(update.message.text)
+    await update.message.reply_text(QUESTIONS[2]["text"], reply_markup=get_keyboard(QUESTIONS[2]["options"]))
+    return Q3
+
 
 async def q3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    return await handle_answer(update, context, 3, Q4)
+    context.user_data["answers"].append(update.message.text)
+    await update.message.reply_text(QUESTIONS[3]["text"], reply_markup=get_keyboard(QUESTIONS[3]["options"]))
+    return Q4
+
 
 async def q4(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    return await handle_answer(update, context, 4, Q5)
+    context.user_data["answers"].append(update.message.text)
+    await update.message.reply_text(QUESTIONS[4]["text"], reply_markup=get_keyboard(QUESTIONS[4]["options"]))
+    return Q5
+
 
 async def q5(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    return await handle_answer(update, context, 5, Q6)
+    context.user_data["answers"].append(update.message.text)
+    await update.message.reply_text(QUESTIONS[5]["text"], reply_markup=get_keyboard(QUESTIONS[5]["options"]))
+    return Q6
+
 
 async def q6(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["answers"].append(update.message.text)
-    return await send_result(update, context)
-
-async def send_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     answers = context.user_data.get("answers", [])
     result = determine_result(answers)
-    
+
     await update.message.reply_text(
         f"🔮 Твой тип: {result['title']}\n\n{result['text']}\n\n"
         f"Хочешь разобраться глубже и изменить эти паттерны?\n"
@@ -176,13 +177,15 @@ async def send_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ConversationHandler.END
 
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("До встречи! 🌸", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
+
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
-    
+
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -195,9 +198,11 @@ def main():
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
-    
+
     app.add_handler(conv_handler)
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
+
 if __name__ == "__main__":
     main()
+
