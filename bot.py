@@ -182,7 +182,15 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("До встречи! 🌸", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
-
+async def get_file_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.voice:
+        await update.message.reply_text(f"file_id: {update.message.voice.file_id}")
+    elif update.message.audio:
+        await update.message.reply_text(f"file_id: {update.message.audio.file_id}")
+    elif update.message.document:
+        await update.message.reply_text(f"file_id: {update.message.document.file_id}")
+    else:
+        await update.message.reply_text("Пришли аудиофайл")
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
@@ -200,6 +208,7 @@ def main():
     )
 
     app.add_handler(conv_handler)
+    app.add_handler(MessageHandler(filters.AUDIO | filters.VOICE | filters.Document.ALL, get_file_id))
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
