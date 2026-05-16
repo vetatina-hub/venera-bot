@@ -1,236 +1,203 @@
 import os
-import json
+import logging
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 import anthropic
-from telegram import Update
-from telegram.ext import Application, MessageHandler, filters, ContextTypes
 
-# Токены
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8948288134:AAEddvw0RgqZhUyds3ogh9U4BtlhV3aQzf0")
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "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")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Хранилище состояний пользователей
-user_states = {}
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 
 QUESTIONS = [
-    """Вопрос 1 из 6.
-Когда денег становится меньше — твоя первая реакция:
-
-А) Срочно ищу помощи, звоню, пишу
-Б) Злюсь. Делаю всё сама
-В) Стараюсь делать всё правильно чтобы не осудили
-Г) Думаю что другим везёт больше
-
-Ответь одной буквой: А, Б, В или Г""",
-
-    """Вопрос 2 из 6.
-Когда получаешь деньги — что происходит внутри?
-
-А) Быстро трачу — как будто не имею права держать
-Б) Чувствую что заработала сама, никто не помогал
-В) Думаю — заслужила ли я это?
-Г) Сравниваю с другими — у них больше
-
-Ответь одной буквой: А, Б, В или Г""",
-
-    """Вопрос 3 из 6.
-В отношениях с близкими ты чаще всего:
-
-А) Боюсь потерять, держусь даже если больно
-Б) Делаю всё сама, не прошу помощи
-В) Стараюсь не создавать конфликтов, соглашаюсь
-Г) Чувствую что меня не понимают и не ценят
-
-Ответь одной буквой: А, Б, В или Г""",
-
-    """Вопрос 4 из 6.
-Когда тебе нужна поддержка — ты:
-
-А) Пишу/звоню сразу, важно чтобы кто-то был рядом
-Б) Справляюсь сама, не люблю зависеть
-В) Жду что заметят сами
-Г) Считаю что другие не смогут дать что мне нужно
-
-Ответь одной буквой: А, Б, В или Г""",
-
-    """Вопрос 5 из 6.
-Когда нет сил или тело даёт сбой:
-
-А) Наверное мне нужна помощь, сама не справлюсь
-Б) Надо просто перетерпеть, я сильная
-В) Наверное я что-то делала не так
-Г) Все так живут, это нормально
-
-Ответь одной буквой: А, Б, В или Г""",
-
-    """Вопрос 6 из 6.
-Как ты относишься к своим желаниям?
-
-А) Мои желания зависят от того одобрят ли их другие
-Б) Я знаю что хочу и делаю по-своему
-В) Сначала позабочусь о других, потом о себе
-Г) Я заслуживаю большего чем имею сейчас
-
-Ответь одной буквой: А, Б, В или Г"""
+    {
+        "text": "1️⃣ Когда тебе плохо, что ты делаешь в первую очередь?",
+        "options": [
+            "А) Ищу, кто меня выслушает и поддержит",
+            "Б) Стараюсь разобраться сама и решить",
+            "В) Думаю, как не расстроить близких",
+            "Г) Злюсь, что этого не должно было случиться"
+        ]
+    },
+    {
+        "text": "2️⃣ Как ты относишься к просьбам о помощи?",
+        "options": [
+            "А) Мне важно, чтобы мне помогли — иначе чувствую себя одинокой",
+            "Б) Лучше сама — так надёжнее",
+            "В) Стесняюсь просить, боюсь быть в тягость",
+            "Г) Считаю, что заслуживаю помощи, но редко её получаю"
+        ]
+    },
+    {
+        "text": "3️⃣ Что ты чувствуешь в отношениях чаще всего?",
+        "options": [
+            "А) Страх потерять близкого человека",
+            "Б) Усталость от того, что всё на мне",
+            "В) Тревогу — а вдруг я недостаточно хороша?",
+            "Г) Ощущение, что меня не ценят так, как я того достойна"
+        ]
+    },
+    {
+        "text": "4️⃣ Как ты реагируешь на конфликт?",
+        "options": [
+            "А) Стараюсь помириться как можно быстрее — не выношу напряжения",
+            "Б) Замыкаюсь, справляюсь сама со своей болью",
+            "В) Извиняюсь, даже если не виновата",
+            "Г) Чувствую несправедливость и долго не могу отпустить"
+        ]
+    },
+    {
+        "text": "5️⃣ Что тебе больше всего мешает двигаться вперёд?",
+        "options": [
+            "А) Страх остаться без поддержки",
+            "Б) Привычка всё тянуть на себе",
+            "В) Желание быть удобной для всех",
+            "Г) Ощущение, что окружающие не дотягивают до тебя"
+        ]
+    },
+    {
+        "text": "6️⃣ Какое желание у тебя самое глубокое?",
+        "options": [
+            "А) Чтобы меня любили и не уходили",
+            "Б) Наконец выдохнуть и не быть за всё ответственной",
+            "В) Быть собой и не бояться осуждения",
+            "Г) Получить то, чего действительно заслуживаю"
+        ]
+    }
 ]
 
 RESULTS = {
-    "Ищущая тепло": """💛 Твой тип: Ищущая тепло
-
-Ты ищешь опору снаружи — в людях, отношениях, одобрении. Внутри есть страх остаться одной. Деньги и успех часто зависят от того, есть ли рядом кто-то кто верит в тебя.
-
-Твоя сила — в умении чувствовать и соединяться с людьми. Когда ты найдёшь опору внутри себя — всё изменится.
-
-Хочешь узнать как это сделать? Напиши Венере лично 👉 @vetatina""",
-
-    "Сама справлюсь": """🔥 Твой тип: Сама справлюсь
-
-Ты сильная и независимая. Но эта сила стоит тебе дорого — ты несёшь всё одна и не пускаешь помощь. Деньги есть, но радости от них мало.
-
-Твоя сила — в решительности и воле. Когда ты научишься принимать — жизнь станет легче и богаче.
-
-Хочешь узнать как? Напиши Венере лично 👉 @vetatina""",
-
-    "Быть хорошей": """🌸 Твой тип: Быть хорошей
-
-Ты живёшь для других. Боишься осуждения и стараешься всем угодить. Свои желания откладываешь на потом. Деньги часто уходят на других.
-
-Твоя сила — в доброте и заботе. Когда ты разрешишь себе быть на первом месте — всё расцветёт.
-
-Хочешь узнать как? Напиши Венере лично 👉 @vetatina""",
-
-    "Я достойна большего": """👑 Твой тип: Я достойна большего
-
-Ты чувствуешь что заслуживаешь большего — и это правда! Но внутри есть обида на мир что он не даёт этого сам. Сравниваешь себя с другими.
-
-Твоя сила — в высоких стандартах и амбициях. Когда ты перестанешь ждать и начнёшь создавать — всё придёт.
-
-Хочешь узнать как? Напиши Венере лично 👉 @vetatina""",
-
-    "Ищущая признания": """✨ Твой тип: Ищущая признания
-
-Тебе важно чтобы тебя видели и ценили. Много делаешь для других в надежде на признание. Деньги и успех связаны с тем насколько тебя замечают.
-
-Твоя сила — в стремлении к развитию. Когда ты признаешь себя сама — мир ответит тебе тем же.
-
-Хочешь узнать как? Напиши Венере лично 👉 @vetatina""",
-
-    "Несущая броню": """⚔️ Твой тип: Несущая броню
-
-Ты защищаешь себя от боли через контроль и независимость. Близких держишь на расстоянии. Деньги — это безопасность и защита.
-
-Твоя сила — в устойчивости и самодостаточности. Когда броня станет не нужна — откроется огромный поток любви и денег.
-
-Хочешь узнать как? Напиши Венере лично 👉 @vetatina""",
-
-    "Несущая мир одна": """🕊️ Твой тип: Несущая мир одна
-
-Ты держишь всё на себе — семью, работу, отношения. Не просишь помощи потому что привыкла что никто не поможет так как надо.
-
-Твоя сила — в огромной внутренней мощи. Когда ты разделишь этот груз — силы умножатся и деньги потекут свободнее.
-
-Хочешь узнать как? Напиши Венере лично 👉 @vetatina"""
+    "А": {
+        "title": "💙 Ищущая тепло",
+        "text": "Ты глубоко чувствующий человек, для которого близость и принятие — главная ценность. Твоя сила — в умении любить. Но страх потери иногда заставляет цепляться там, где нужно отпустить. Венера поможет тебе найти опору внутри себя."
+    },
+    "Б": {
+        "title": "💪 Сама справлюсь",
+        "text": "Ты привыкла быть сильной и надёжной. Несёшь много — и делаешь это достойно. Но за этой силой прячется усталость и желание, чтобы кто-то наконец позаботился о тебе. Пора научиться принимать, а не только отдавать."
+    },
+    "В": {
+        "title": "🌸 Быть хорошей",
+        "text": "Ты чуткая, внимательная, всегда думаешь о других. Твоя доброта — это дар. Но где-то внутри живёт страх: 'А если я не понравлюсь?' Венера поможет тебе полюбить себя такой, какая ты есть — без масок."
+    },
+    "Г": {
+        "title": "👑 Я достойна большего",
+        "text": "Ты знаешь себе цену — и это прекрасно. Ты чувствуешь несоответствие между тем, что имеешь, и тем, чего заслуживаешь. Венера поможет убрать внутренние блоки и открыть путь к тому, что тебе действительно принадлежит."
+    },
+    "АГ": {
+        "title": "✨ Ищущая признания",
+        "text": "Тебе важно и тепло, и признание — ты хочешь быть любимой и ценимой одновременно. Это глубокая потребность, которая ведёт к большой любви. Венера поможет тебе привлекать людей, которые видят твою настоящую ценность."
+    },
+    "БГ": {
+        "title": "🛡️ Несущая броню",
+        "text": "Ты сильная снаружи и ранимая внутри. Научилась защищаться, но за бронёй скрывается желание, чтобы тебя наконец увидели и оценили. Венера поможет снять защиту там, где она уже не нужна."
+    },
+    "ВБ": {
+        "title": "🕊️ Несущая мир одна",
+        "text": "Ты держишь гармонию вокруг себя, часто в ущерб себе. Несёшь тяжесть отношений и при этом боишься быть собой. Венера поможет тебе найти баланс между заботой о других и любовью к себе."
+    }
 }
 
-async def get_result_from_claude(answers):
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    
-    answers_text = "\n".join([f"Вопрос {i+1}: {a}" for i, a in enumerate(answers)])
-    
-    message = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=100,
-        messages=[{
-            "role": "user",
-            "content": f"""Пользователь ответил на 6 вопросов квиза. Ответы:
-{answers_text}
+Q1, Q2, Q3, Q4, Q5, Q6 = range(6)
 
-Подсчитай количество каждой буквы (А, Б, В, Г).
-Логика определения типа:
-- Больше А = Ищущая тепло
-- Больше Б = Сама справлюсь  
-- Больше В = Быть хорошей
-- Больше Г = Я достойна большего
-- Поровну А и Г = Ищущая признания
-- Поровну Б и Г = Несущая броню
-- Поровну В и Б = Несущая мир одна
+def get_keyboard(options):
+    return ReplyKeyboardMarkup([[opt] for opt in options], resize_keyboard=True, one_time_keyboard=True)
 
-Напиши ТОЛЬКО одно название типа из списка выше, без пояснений."""
-        }]
+def determine_result(answers):
+    counts = {"А": 0, "Б": 0, "В": 0, "Г": 0}
+    for a in answers:
+        letter = a[0]
+        if letter in counts:
+            counts[letter] += 1
+    
+    max_count = max(counts.values())
+    leaders = [k for k, v in counts.items() if v == max_count]
+    
+    if len(leaders) == 1:
+        return RESULTS.get(leaders[0], RESULTS["А"])
+    
+    pair = "".join(sorted(leaders[:2]))
+    if pair in RESULTS:
+        return RESULTS[pair]
+    
+    return RESULTS[leaders[0]]
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["answers"] = []
+    await update.message.reply_text(
+        "Привет! 🌟 Я помогу тебе узнать, какой паттерн управляет твоей жизнью и отношениями.\n\n"
+        "Отвечай честно — здесь нет правильных или неправильных ответов. "
+        "Это займёт всего 2 минуты 💫\n\n" + QUESTIONS[0]["text"],
+        reply_markup=get_keyboard(QUESTIONS[0]["options"])
     )
-    
-    return message.content[0].text.strip()
+    return Q1
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    text = update.message.text.strip()
+async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE, q_index: int, next_state):
+    answer = update.message.text
+    context.user_data["answers"].append(answer)
     
-    # Инициализация нового пользователя
-    if chat_id not in user_states:
-        user_states[chat_id] = {"step": 0, "answers": []}
+    if next_state == ConversationHandler.END:
+        return await send_result(update, context)
     
-    state = user_states[chat_id]
+    await update.message.reply_text(
+        QUESTIONS[q_index]["text"],
+        reply_markup=get_keyboard(QUESTIONS[q_index]["options"])
+    )
+    return next_state
+
+async def q1(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await handle_answer(update, context, 1, Q2)
+
+async def q2(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await handle_answer(update, context, 2, Q3)
+
+async def q3(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await handle_answer(update, context, 3, Q4)
+
+async def q4(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await handle_answer(update, context, 4, Q5)
+
+async def q5(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await handle_answer(update, context, 5, Q6)
+
+async def q6(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["answers"].append(update.message.text)
+    return await send_result(update, context)
+
+async def send_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    answers = context.user_data.get("answers", [])
+    result = determine_result(answers)
     
-    # Если квиз не начат или сброшен
-    if state["step"] == 0:
-        user_states[chat_id] = {"step": 1, "answers": []}
-        await update.message.reply_text(
-            "Привет! 👋\n\nЯ помогу тебе узнать твой тип — почему деньги, отношения и здоровье складываются именно так.\n\nОтветь честно на 6 вопросов 👇"
-        )
-        await update.message.reply_text(QUESTIONS[0])
-        return
-    
-    # Принимаем ответ
-    step = state["step"]
-    
-    if step >= 1 and step <= 6:
-        # Проверяем что ответ корректный
-        answer = text.upper()
-        if answer not in ["А", "Б", "В", "Г", "A", "B", "C", "D"]:
-            await update.message.reply_text("Пожалуйста, ответь одной буквой: А, Б, В или Г")
-            return
-        
-        # Нормализуем латинские буквы в кириллицу
-        latin_to_cyrillic = {"A": "А", "B": "Б", "C": "В", "D": "Г"}
-        if answer in latin_to_cyrillic:
-            answer = latin_to_cyrillic[answer]
-        
-        state["answers"].append(answer)
-        state["step"] += 1
-        
-        if state["step"] <= 6:
-            # Следующий вопрос
-            await update.message.reply_text(QUESTIONS[state["step"] - 1])
-        else:
-            # Финал — определяем тип
-            await update.message.reply_text("Анализирую твои ответы... ✨")
-            
-            try:
-                result_type = await get_result_from_claude(state["answers"])
-                
-                # Ищем совпадение с нашими результатами
-                result_text = None
-                for key in RESULTS:
-                    if key.lower() in result_type.lower():
-                        result_text = RESULTS[key]
-                        break
-                
-                if not result_text:
-                    result_text = RESULTS["Ищущая тепло"]
-                
-                await update.message.reply_text(result_text)
-            except Exception as e:
-                await update.message.reply_text(
-                    "Произошла ошибка. Напиши Венере лично 👉 @vetatina"
-                )
-            
-            # Сбрасываем состояние
-            user_states[chat_id] = {"step": 0, "answers": []}
+    await update.message.reply_text(
+        f"🔮 Твой тип: {result['title']}\n\n{result['text']}\n\n"
+        f"Хочешь разобраться глубже и изменить эти паттерны?\n"
+        f"Напиши Венере лично 👉 @vetatina",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ConversationHandler.END
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("До встречи! 🌸", reply_markup=ReplyKeyboardRemove())
+    return ConversationHandler.END
 
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print("Бот запущен!")
-    app.run_polling(drop_pending_updates=True)
+    
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            Q1: [MessageHandler(filters.TEXT & ~filters.COMMAND, q1)],
+            Q2: [MessageHandler(filters.TEXT & ~filters.COMMAND, q2)],
+            Q3: [MessageHandler(filters.TEXT & ~filters.COMMAND, q3)],
+            Q4: [MessageHandler(filters.TEXT & ~filters.COMMAND, q4)],
+            Q5: [MessageHandler(filters.TEXT & ~filters.COMMAND, q5)],
+            Q6: [MessageHandler(filters.TEXT & ~filters.COMMAND, q6)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+    
+    app.add_handler(conv_handler)
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
