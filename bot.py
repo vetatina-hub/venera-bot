@@ -1,6 +1,7 @@
 import os
 import logging
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from datetime import timedelta
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 
 logging.basicConfig(level=logging.INFO)
@@ -8,12 +9,19 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
+AUDIO_DAY1 = "CQACAgIAAxkBAANtagh5cIL3yA1nQR8rKLAqadhzdY4AAqWfAAIIvUhIiI1CwUPzu4w7BA"
+AUDIO_DAY2 = "CQACAgIAAxkBAANuagh5hFRO-fCMyBCUahQCJrjWnPEAAqefAAIIvUhI2o2YSisvMhc7BA"
+AUDIO_DAY3 = "CQACAgIAAxkBAANvagh5jD1k50uSW-VmT9OinlJTLaYAAqmfAAIIvUhIw0Or60pgtFE7BA"
+
+LINK_GROUP = "https://t.me/+2v5c8znsaONjY2Fi"
+LINK_COURSE = "https://vetatina-hub.github.io/kvantoviy-vzlet/"
+
 QUESTIONS = [
     {
         "text": "1️⃣ Когда тебе плохо, что ты делаешь в первую очередь?",
         "options": [
             "А) Ищу, кто меня выслушает и поддержит",
-            "Б) Стараюсь разобраться сама и решить",
+            "Б) Стараюсь разобраться сам(а) и решить",
             "В) Думаю, как не расстроить близких",
             "Г) Злюсь, что этого не должно было случиться"
         ]
@@ -21,8 +29,8 @@ QUESTIONS = [
     {
         "text": "2️⃣ Как ты относишься к просьбам о помощи?",
         "options": [
-            "А) Мне важно, чтобы мне помогли — иначе чувствую себя одинокой",
-            "Б) Лучше сама — так надёжнее",
+            "А) Мне важно, чтобы мне помогли — иначе чувствую себя одиноким(ой)",
+            "Б) Лучше сам(а) — так надёжнее",
             "В) Стесняюсь просить, боюсь быть в тягость",
             "Г) Считаю, что заслуживаю помощи, но редко её получаю"
         ]
@@ -32,16 +40,16 @@ QUESTIONS = [
         "options": [
             "А) Страх потерять близкого человека",
             "Б) Усталость от того, что всё на мне",
-            "В) Тревогу — а вдруг я недостаточно хороша?",
-            "Г) Ощущение, что меня не ценят так, как я того достойна"
+            "В) Тревогу — а вдруг я недостаточно хорош(а)?",
+            "Г) Ощущение, что меня не ценят так, как я того достоин(на)"
         ]
     },
     {
         "text": "4️⃣ Как ты реагируешь на конфликт?",
         "options": [
             "А) Стараюсь помириться как можно быстрее — не выношу напряжения",
-            "Б) Замыкаюсь, справляюсь сама со своей болью",
-            "В) Извиняюсь, даже если не виновата",
+            "Б) Замыкаюсь, справляюсь сам(а) со своей болью",
+            "В) Извиняюсь, даже если не виноват(а)",
             "Г) Чувствую несправедливость и долго не могу отпустить"
         ]
     },
@@ -50,7 +58,7 @@ QUESTIONS = [
         "options": [
             "А) Страх остаться без поддержки",
             "Б) Привычка всё тянуть на себе",
-            "В) Желание быть удобной для всех",
+            "В) Желание быть удобным(ой) для всех",
             "Г) Ощущение, что окружающие не дотягивают до тебя"
         ]
     },
@@ -58,7 +66,7 @@ QUESTIONS = [
         "text": "6️⃣ Какое желание у тебя самое глубокое?",
         "options": [
             "А) Чтобы меня любили и не уходили",
-            "Б) Наконец выдохнуть и не быть за всё ответственной",
+            "Б) Наконец выдохнуть и не быть за всё ответственным(ой)",
             "В) Быть собой и не бояться осуждения",
             "Г) Получить то, чего действительно заслуживаю"
         ]
@@ -67,31 +75,31 @@ QUESTIONS = [
 
 RESULTS = {
     "А": {
-        "title": "💙 Ищущая тепло",
+        "title": "💙 Ищущий(ая) тепло",
         "text": "Ты глубоко чувствующий человек, для которого близость и принятие — главная ценность. Твоя сила — в умении любить. Но страх потери иногда заставляет цепляться там, где нужно отпустить. Венера поможет тебе найти опору внутри себя."
     },
     "Б": {
-        "title": "💪 Сама справлюсь",
-        "text": "Ты привыкла быть сильной и надёжной. Несёшь много — и делаешь это достойно. Но за этой силой прячется усталость и желание, чтобы кто-то наконец позаботился о тебе. Пора научиться принимать, а не только отдавать."
+        "title": "💪 Сам(а) справлюсь",
+        "text": "Ты привык(ла) быть сильным(ой) и надёжным(ой). Несёшь много — и делаешь это достойно. Но за этой силой прячется усталость и желание, чтобы кто-то наконец позаботился о тебе. Пора научиться принимать, а не только отдавать."
     },
     "В": {
-        "title": "🌸 Быть хорошей",
-        "text": "Ты чуткая, внимательная, всегда думаешь о других. Твоя доброта — это дар. Но где-то внутри живёт страх: а если я не понравлюсь? Венера поможет тебе полюбить себя такой, какая ты есть — без масок."
+        "title": "🌸 Быть хорошим(ей)",
+        "text": "Ты чуткий(ая), внимательный(ая), всегда думаешь о других. Твоя доброта — это дар. Но где-то внутри живёт страх: а если я не понравлюсь? Венера поможет тебе полюбить себя таким(ой), какой ты есть — без масок."
     },
     "Г": {
-        "title": "👑 Я достойна большего",
+        "title": "👑 Я достоин(на) большего",
         "text": "Ты знаешь себе цену — и это прекрасно. Ты чувствуешь несоответствие между тем, что имеешь, и тем, чего заслуживаешь. Венера поможет убрать внутренние блоки и открыть путь к тому, что тебе действительно принадлежит."
     },
     "АГ": {
-        "title": "✨ Ищущая признания",
-        "text": "Тебе важно и тепло, и признание — ты хочешь быть любимой и ценимой одновременно. Это глубокая потребность, которая ведёт к большой любви. Венера поможет тебе привлекать людей, которые видят твою настоящую ценность."
+        "title": "✨ Ищущий(ая) признания",
+        "text": "Тебе важно и тепло, и признание — ты хочешь быть любимым(ой) и ценимым(ой) одновременно. Это глубокая потребность, которая ведёт к большой любви. Венера поможет тебе привлекать людей, которые видят твою настоящую ценность."
     },
     "БГ": {
-        "title": "🛡️ Несущая броню",
-        "text": "Ты сильная снаружи и ранимая внутри. Научилась защищаться, но за бронёй скрывается желание, чтобы тебя наконец увидели и оценили. Венера поможет снять защиту там, где она уже не нужна."
+        "title": "🛡️ Несущий(ая) броню",
+        "text": "Ты сильный(ая) снаружи и ранимый(ая) внутри. Научился(ась) защищаться, но за бронёй скрывается желание, чтобы тебя наконец увидели и оценили. Венера поможет снять защиту там, где она уже не нужна."
     },
     "ВБ": {
-        "title": "🕊️ Несущая мир одна",
+        "title": "🕊️ Несущий(ая) мир один(а)",
         "text": "Ты держишь гармонию вокруг себя, часто в ущерб себе. Несёшь тяжесть отношений и при этом боишься быть собой. Венера поможет тебе найти баланс между заботой о других и любовью к себе."
     }
 }
@@ -101,6 +109,19 @@ Q1, Q2, Q3, Q4, Q5, Q6 = range(6)
 
 def get_keyboard(options):
     return ReplyKeyboardMarkup([[opt] for opt in options], resize_keyboard=True, one_time_keyboard=True)
+
+
+def get_group_keyboard():
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("🌸 Войти в Пространство трансформации", url=LINK_GROUP)
+    ]])
+
+
+def get_course_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🌸 Войти в Пространство трансформации", url=LINK_GROUP)],
+        [InlineKeyboardButton("✨ Узнать о курсе Квантовый взлёт", url=LINK_COURSE)]
+    ])
 
 
 def determine_result(answers):
@@ -121,6 +142,96 @@ def determine_result(answers):
         return RESULTS[pair]
 
     return RESULTS[leaders[0]]
+
+
+async def send_day1(context: ContextTypes.DEFAULT_TYPE):
+    chat_id = context.job.chat_id
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            "🌿 День 1. Практика для тебя\n\n"
+            "«Родители — источник силы, а не боли»\n\n"
+            "Когда мы смотрим на родителей через боль, обиду или сравнение — "
+            "мы бессознательно закрываем главный источник энергии: "
+            "силы жизни, уверенности, денег, любви и здоровья.\n\n"
+            "Не потому что родители идеальны.\n"
+            "А потому что мы через них пришли в этот мир. "
+            "И поток идёт только через признание.\n\n"
+            "Послушай практику 👇 и позволь потоку включиться."
+        )
+    )
+    await context.bot.send_audio(chat_id=chat_id, audio=AUDIO_DAY1)
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            "✨ Если во время практики было тепло, мурашки, ком в горле или слёзы — "
+            "это значит, что поток начал включаться.\n\n"
+            "Завтра пришлю вторую практику 💙\n\n"
+            "А пока — присоединяйся в наше бесплатное пространство, "
+            "где такие практики проходят вживую:"
+        ),
+        reply_markup=get_group_keyboard()
+    )
+
+
+async def send_day2(context: ContextTypes.DEFAULT_TYPE):
+    chat_id = context.job.chat_id
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            "🌿 День 2. Практика для тебя\n\n"
+            "«Отец. Принятие. Масштаб»\n\n"
+            "Можно сколько угодно работать над собой, повышать доход, строить стратегию.\n"
+            "Но если внутри ты выше отца — масштаб будет упираться в потолок.\n\n"
+            "Потому что отец — это первая опора. "
+            "Это энергия структуры, денег, защиты и движения вперёд.\n\n"
+            "Когда отец в сердце — человек не воюет.\n"
+            "Он идёт. Спокойно. С достоинством. Без доказательств.\n\n"
+            "Послушай практику 👇"
+        )
+    )
+    await context.bot.send_audio(chat_id=chat_id, audio=AUDIO_DAY2)
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            "После настоящего принятия отца резко растёт доход — "
+            "уходит скрытая конкуренция, снимается запрет «не быть больше него», "
+            "возвращается опора за спиной.\n\n"
+            "Завтра пришлю последнюю практику ✨"
+        ),
+        reply_markup=get_group_keyboard()
+    )
+
+
+async def send_day3(context: ContextTypes.DEFAULT_TYPE):
+    chat_id = context.job.chat_id
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            "🌿 День 3. Практика для тебя\n\n"
+            "«Деньги по-женски»\n\n"
+            "Деньги по-женски — это не про напряжение и бег.\n"
+            "Это про состояние. Про мягкость. Про внутренний поток.\n\n"
+            "Когда человек в своей природе — деньги приходят не за усилие, "
+            "а за присутствие. За энергию. За чистоту.\n\n"
+            "Послушай практику 👇 и проговори вслух:\n\n"
+            "«Я выбираю лёгкость. Я позволяю себе изобилие.\n"
+            "Мой поток приносит мне доход естественно.\n"
+            "Я доверяю — и деньги идут. Я в своём.»"
+        )
+    )
+    await context.bot.send_audio(chat_id=chat_id, audio=AUDIO_DAY3)
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            "🌟 Ты прошёл(а) три дня — это уже начало пути!\n\n"
+            "Если чувствуешь, что хочешь идти глубже — "
+            "Квантовый взлёт открыт для тебя.\n\n"
+            "Там мы работаем с этим мягко, бережно и глубоко — "
+            "через законы квантового поля и системные расстановки."
+        ),
+        reply_markup=get_course_keyboard()
+    )
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -168,19 +279,23 @@ async def q6(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["answers"].append(update.message.text)
     answers = context.user_data.get("answers", [])
     result = determine_result(answers)
+    chat_id = update.effective_chat.id
 
     await update.message.reply_text(
         f"🔮 Твой тип: {result['title']}\n\n{result['text']}\n\n"
-        f"Хочешь разобраться глубже и изменить эти паттерны?\n"
-        f"Напиши Венере лично 👉 @vetatina",
-        reply_markup=ReplyKeyboardRemove()
+        f"Я подготовила для тебя практику на каждый день — она поможет начать работу прямо сейчас. "
+        f"Завтра пришлю первую 🌟\n\n"
+        f"А пока — присоединяйся в бесплатное пространство, "
+        f"где практики проходят вживую с разборами и медитациями:",
+        reply_markup=get_group_keyboard()
     )
+
+    context.job_queue.run_once(send_day1, when=timedelta(hours=24), chat_id=chat_id, name=f"day1_{chat_id}")
+    context.job_queue.run_once(send_day2, when=timedelta(hours=48), chat_id=chat_id, name=f"day2_{chat_id}")
+    context.job_queue.run_once(send_day3, when=timedelta(hours=72), chat_id=chat_id, name=f"day3_{chat_id}")
+
     return ConversationHandler.END
 
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("До встречи! 🌸", reply_markup=ReplyKeyboardRemove())
-    return ConversationHandler.END
 
 async def get_file_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.voice:
@@ -189,8 +304,13 @@ async def get_file_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"file_id: {update.message.audio.file_id}")
     elif update.message.document:
         await update.message.reply_text(f"file_id: {update.message.document.file_id}")
-    else:
-        await update.message.reply_text("Пришли аудиофайл")
+
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("До встречи! 🌸", reply_markup=ReplyKeyboardRemove())
+    return ConversationHandler.END
+
+
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
