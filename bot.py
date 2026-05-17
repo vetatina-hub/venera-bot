@@ -1,336 +1,359 @@
 import os
 import logging
-from datetime import timedelta
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
+import asyncio
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from datetime import datetime, timedelta, timezone
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    Application, CommandHandler, CallbackQueryHandler,
+    ContextTypes, ConversationHandler
+)
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 AUDIO_DAY1 = "CQACAgIAAxkBAANtagh5cIL3yA1nQR8rKLAqadhzdY4AAqWfAAIIvUhIiI1CwUPzu4w7BA"
 AUDIO_DAY2 = "CQACAgIAAxkBAANuagh5hFRO-fCMyBCUahQCJrjWnPEAAqefAAIIvUhI2o2YSisvMhc7BA"
 AUDIO_DAY3 = "CQACAgIAAxkBAANvagh5jD1k50uSW-VmT9OinlJTLaYAAqmfAAIIvUhIw0Or60pgtFE7BA"
 
-LINK_GROUP = "https://t.me/+2v5c8znsaONjY2Fi"
+LINK_GROUP  = "https://t.me/+2v5c8znsaONjY2Fi"
 LINK_COURSE = "https://vetatina-hub.github.io/kvantoviy-vzlet/"
+
+Q1, Q2, Q3, Q4, Q5, Q6 = range(6)
 
 QUESTIONS = [
     {
-        "text": "1️⃣ Когда тебе плохо, что ты делаешь в первую очередь?",
+        "text": "1️⃣ Когда в жизни что-то идёт не так — ваша первая реакция?",
         "options": [
-            "А) Ищу, кто меня выслушает и поддержит",
-            "Б) Стараюсь разобраться сам(а) и решить",
-            "В) Думаю, как не расстроить близких",
-            "Г) Злюсь, что этого не должно было случиться"
-        ]
+            ("А) Ищу поддержки и тепла рядом", "А"),
+            ("Б) Беру себя в руки и действую сама", "Б"),
+            ("В) Думаю, как сделать всё правильно", "В"),
+            ("Г) Злюсь — я заслуживаю лучшего", "Г"),
+        ],
     },
     {
-        "text": "2️⃣ Как ты относишься к просьбам о помощи?",
+        "text": "2️⃣ Как вы чаще всего относитесь к деньгам?",
         "options": [
-            "А) Мне важно, чтобы мне помогли — иначе чувствую себя одиноким(ой)",
-            "Б) Лучше сам(а) — так надёжнее",
-            "В) Стесняюсь просить, боюсь быть в тягость",
-            "Г) Считаю, что заслуживаю помощи, но редко её получаю"
-        ]
+            ("А) Хочу, чтобы кто-то помог разобраться", "А"),
+            ("Б) Контролирую сама, никому не доверяю", "Б"),
+            ("В) Трачу на других, себе — в последнюю очередь", "В"),
+            ("Г) Уверена, что достойна большего, но что-то мешает", "Г"),
+        ],
     },
     {
-        "text": "3️⃣ Что ты чувствуешь в отношениях чаще всего?",
+        "text": "3️⃣ Ваши отношения с близкими чаще всего:",
         "options": [
-            "А) Страх потерять близкого человека",
-            "Б) Усталость от того, что всё на мне",
-            "В) Тревогу — а вдруг я недостаточно хорош(а)?",
-            "Г) Ощущение, что меня не ценят так, как я того достоин(на)"
-        ]
+            ("А) Ищу принятия и близости", "А"),
+            ("Б) Держу дистанцию, опираюсь на себя", "Б"),
+            ("В) Стараюсь не создавать конфликтов", "В"),
+            ("Г) Чувствую, что меня не ценят по достоинству", "Г"),
+        ],
     },
     {
-        "text": "4️⃣ Как ты реагируешь на конфликт?",
+        "text": "4️⃣ Когда вам трудно — вы:",
         "options": [
-            "А) Стараюсь помириться как можно быстрее — не выношу напряжения",
-            "Б) Замыкаюсь, справляюсь сам(а) со своей болью",
-            "В) Извиняюсь, даже если не виноват(а)",
-            "Г) Чувствую несправедливость и долго не могу отпустить"
-        ]
+            ("А) Ищу кого-то, кто выслушает", "А"),
+            ("Б) Справляюсь в одиночку, не показываю слабость", "Б"),
+            ("В) Продолжаю помогать другим, даже если самой тяжело", "В"),
+            ("Г) Понимаю, что снова приходится доказывать свою ценность", "Г"),
+        ],
     },
     {
-        "text": "5️⃣ Что тебе больше всего мешает двигаться вперёд?",
+        "text": "5️⃣ Ваша главная боль в теме денег:",
         "options": [
-            "А) Страх остаться без поддержки",
-            "Б) Привычка всё тянуть на себе",
-            "В) Желание быть удобным(ой) для всех",
-            "Г) Ощущение, что окружающие не дотягивают до тебя"
-        ]
+            ("А) Не знаю, как начать — хочу чьей-то помощи", "А"),
+            ("Б) Устала тянуть всё сама, но не могу остановиться", "Б"),
+            ("В) Вкладываю в других, а для себя — никак", "В"),
+            ("Г) Знаю, чего хочу, но что-то постоянно блокирует", "Г"),
+        ],
     },
     {
-        "text": "6️⃣ Какое желание у тебя самое глубокое?",
+        "text": "6️⃣ Как вы принимаете важные решения?",
         "options": [
-            "А) Чтобы меня любили и не уходили",
-            "Б) Наконец выдохнуть и не быть за всё ответственным(ой)",
-            "В) Быть собой и не бояться осуждения",
-            "Г) Получить то, чего действительно заслуживаю"
-        ]
-    }
+            ("А) Советуюсь, жду одобрения", "А"),
+            ("Б) Решаю сама, не люблю зависеть", "Б"),
+            ("В) Выбираю так, чтобы никого не обидеть", "В"),
+            ("Г) Принимаю смело, знаю — я достойна большего", "Г"),
+        ],
+    },
 ]
 
 RESULTS = {
     "А": {
-        "title": "💙 Ищущий(ая) тепло",
-        "text": "Ты глубоко чувствующий человек, для которого близость и принятие — главная ценность. Твоя сила — в умении любить. Но страх потери иногда заставляет цепляться там, где нужно отпустить. Венера поможет тебе найти опору внутри себя."
+        "title": "Ищущая тепло 💙",
+        "text": (
+            "Ты глубоко чувствующий человек, которому важны принятие и поддержка.\n\n"
+            "Твоя сила — в чуткости и умении строить связи.\n"
+            "Твой блок — ты ждёшь разрешения от других, чтобы двигаться вперёд.\n\n"
+            "Квантовый взлёт даст тебе опору внутри — и деньги потекут из этой новой точки."
+        ),
     },
     "Б": {
-        "title": "💪 Сам(а) справлюсь",
-        "text": "Ты привык(ла) быть сильным(ой) и надёжным(ой). Несёшь много — и делаешь это достойно. Но за этой силой прячется усталость и желание, чтобы кто-то наконец позаботился о тебе. Пора научиться принимать, а не только отдавать."
+        "title": "Сама справлюсь 💪",
+        "text": (
+            "Ты сильная, самостоятельная, привыкла на всё опираться только на себя.\n\n"
+            "Твоя сила — в дисциплине и воле.\n"
+            "Твой блок — ты не умеешь принимать помощь и закрыта от потока.\n\n"
+            "Квантовый взлёт научит тебя получать — и откроет новый уровень дохода."
+        ),
     },
     "В": {
-        "title": "🌸 Быть хорошим(ей)",
-        "text": "Ты чуткий(ая), внимательный(ая), всегда думаешь о других. Твоя доброта — это дар. Но где-то внутри живёт страх: а если я не понравлюсь? Венера поможет тебе полюбить себя таким(ой), какой ты есть — без масок."
+        "title": "Быть хорошей 🌸",
+        "text": (
+            "Ты заботливая и отдающая. Всегда думаешь о других раньше, чем о себе.\n\n"
+            "Твоя сила — в щедрости и любви.\n"
+            "Твой блок — ты не умеешь ставить себя на первое место.\n\n"
+            "Квантовый взлёт вернёт тебе право быть главной в своей жизни."
+        ),
     },
     "Г": {
-        "title": "👑 Я достоин(на) большего",
-        "text": "Ты знаешь себе цену — и это прекрасно. Ты чувствуешь несоответствие между тем, что имеешь, и тем, чего заслуживаешь. Венера поможет убрать внутренние блоки и открыть путь к тому, что тебе действительно принадлежит."
+        "title": "Я достойна большего 👑",
+        "text": (
+            "Ты чувствуешь свою ценность и знаешь, что заслуживаешь большего.\n\n"
+            "Твоя сила — в амбициях и самооценке.\n"
+            "Твой блок — между желанием и реальностью есть стена.\n\n"
+            "Квантовый взлёт покажет корень блока и уберёт его из поля."
+        ),
     },
     "АГ": {
-        "title": "✨ Ищущий(ая) признания",
-        "text": "Тебе важно и тепло, и признание — ты хочешь быть любимым(ой) и ценимым(ой) одновременно. Это глубокая потребность, которая ведёт к большой любви. Венера поможет тебе привлекать людей, которые видят твою настоящую ценность."
+        "title": "Ищущая признания ✨",
+        "text": (
+            "Ты хочешь и тепла, и признания своей ценности — сразу.\n\n"
+            "Твоя сила — в глубине чувств и амбициях одновременно.\n"
+            "Твой блок — ты зависишь от оценки других.\n\n"
+            "Квантовый взлёт освободит тебя от этой зависимости."
+        ),
     },
     "БГ": {
-        "title": "🛡️ Несущий(ая) броню",
-        "text": "Ты сильный(ая) снаружи и ранимый(ая) внутри. Научился(ась) защищаться, но за бронёй скрывается желание, чтобы тебя наконец увидели и оценили. Венера поможет снять защиту там, где она уже не нужна."
+        "title": "Несущая броню 🛡️",
+        "text": (
+            "Ты сильная и знаешь себе цену, но закрылась от мира.\n\n"
+            "Твоя сила — в независимости и воле.\n"
+            "Твой блок — броня не пускает не только боль, но и деньги, и любовь.\n\n"
+            "Квантовый взлёт поможет тебе открыться — не теряя силы."
+        ),
     },
     "ВБ": {
-        "title": "🕊️ Несущий(ая) мир один(а)",
-        "text": "Ты держишь гармонию вокруг себя, часто в ущерб себе. Несёшь тяжесть отношений и при этом боишься быть собой. Венера поможет тебе найти баланс между заботой о других и любовью к себе."
-    }
+        "title": "Несущая мир одна 🕊️",
+        "text": (
+            "Ты берёшь на себя всё — заботу о других и ответственность за мир вокруг.\n\n"
+            "Твоя сила — в стойкости и любви.\n"
+            "Твой блок — ты несёшь чужое и не оставляешь место для своего.\n\n"
+            "Квантовый взлёт вернёт тебя на своё место — и освободит поток."
+        ),
+    },
 }
 
-Q1, Q2, Q3, Q4, Q5, Q6 = range(6)
+def get_conn():
+    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
 
+def init_db():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS scheduled_messages (
+                    id SERIAL PRIMARY KEY,
+                    chat_id BIGINT NOT NULL,
+                    day INT NOT NULL,
+                    send_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                    sent BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                )
+            """)
+        conn.commit()
+    logger.info("DB инициализирована")
 
-def get_keyboard(options):
-    return ReplyKeyboardMarkup([[opt] for opt in options], resize_keyboard=True, one_time_keyboard=True)
+def schedule_user(chat_id: int):
+    now = datetime.now(timezone.utc)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM scheduled_messages WHERE chat_id = %s AND sent = FALSE", (chat_id,))
+            for day in [1, 2, 3]:
+                send_at = now + timedelta(hours=24 * day)
+                cur.execute(
+                    "INSERT INTO scheduled_messages (chat_id, day, send_at) VALUES (%s, %s, %s)",
+                    (chat_id, day, send_at)
+                )
+        conn.commit()
+    logger.info(f"Запланированы практики для {chat_id}")
 
+async def send_day_message(bot, chat_id: int, day: int):
+    try:
+        if day == 1:
+            await bot.send_audio(
+                chat_id=chat_id,
+                audio=AUDIO_DAY1,
+                caption=(
+                    "🌟 Практика Дня 1: «Родители — источник силы»\n\n"
+                    "Слушай в тишине, с закрытыми глазами.\n"
+                    "Позволь себе принять."
+                ),
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("Войти в Пространство трансформации", url=LINK_GROUP)
+                ]])
+            )
+        elif day == 2:
+            await bot.send_audio(
+                chat_id=chat_id,
+                audio=AUDIO_DAY2,
+                caption=(
+                    "🌟 Практика Дня 2: «Отец. Принятие. Масштаб»\n\n"
+                    "Это практика про разрешение от отца.\n"
+                    "Позволь ему быть — и прими свою силу."
+                ),
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("Войти в Пространство трансформации", url=LINK_GROUP)
+                ]])
+            )
+        elif day == 3:
+            await bot.send_audio(
+                chat_id=chat_id,
+                audio=AUDIO_DAY3,
+                caption=(
+                    "🌟 Практика Дня 3: «Деньги по-женски»\n\n"
+                    "Финальная практика трёхдневного погружения.\n"
+                    "Открой канал получения."
+                ),
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("Войти в Пространство трансформации", url=LINK_GROUP),
+                    InlineKeyboardButton("Квантовый взлёт", url=LINK_COURSE),
+                ]])
+            )
+        logger.info(f"Отправлена практика дня {day} пользователю {chat_id}")
+    except Exception as e:
+        logger.error(f"Ошибка отправки дня {day} для {chat_id}: {e}")
 
-def get_group_keyboard():
-    return InlineKeyboardMarkup([[
-        InlineKeyboardButton("🌸 Войти в Пространство трансформации", url=LINK_GROUP)
-    ]])
+async def scheduler_loop(bot):
+    while True:
+        try:
+            now = datetime.now(timezone.utc)
+            with get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT id, chat_id, day FROM scheduled_messages
+                        WHERE sent = FALSE AND send_at <= %s
+                    """, (now,))
+                    rows = cur.fetchall()
+                for row in rows:
+                    await send_day_message(bot, row["chat_id"], row["day"])
+                    with conn.cursor() as cur2:
+                        cur2.execute("UPDATE scheduled_messages SET sent = TRUE WHERE id = %s", (row["id"],))
+                    conn.commit()
+        except Exception as e:
+            logger.error(f"Ошибка в scheduler_loop: {e}")
+        await asyncio.sleep(60)
 
-
-def get_course_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🌸 Войти в Пространство трансформации", url=LINK_GROUP)],
-        [InlineKeyboardButton("✨ Узнать о курсе Квантовый взлёт", url=LINK_COURSE)]
-    ])
-
-
-def determine_result(answers):
-    counts = {"А": 0, "Б": 0, "В": 0, "Г": 0}
-    for a in answers:
-        letter = a[0]
-        if letter in counts:
-            counts[letter] += 1
-
-    max_count = max(counts.values())
-    leaders = [k for k, v in counts.items() if v == max_count]
-
+def determine_result(answers: list) -> str:
+    from collections import Counter
+    c = Counter(answers)
+    top = c.most_common()
+    if not top:
+        return "А"
+    max_count = top[0][1]
+    leaders = [k for k, v in c.items() if v == max_count]
     if len(leaders) == 1:
-        return RESULTS.get(leaders[0], RESULTS["А"])
+        return leaders[0]
+    pair = tuple(sorted(leaders[:2]))
+    combos = {("А", "Г"): "АГ", ("Б", "Г"): "БГ", ("Б", "В"): "ВБ"}
+    return combos.get(pair, leaders[0])
 
-    pair = "".join(sorted(leaders[:2]))
-    if pair in RESULTS:
-        return RESULTS[pair]
-
-    return RESULTS[leaders[0]]
-
-
-async def send_day1(context: ContextTypes.DEFAULT_TYPE):
-    chat_id = context.job.chat_id
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text=(
-            "🌿 День 1. Практика для тебя\n\n"
-            "«Родители — источник силы, а не боли»\n\n"
-            "Когда мы смотрим на родителей через боль, обиду или сравнение — "
-            "мы бессознательно закрываем главный источник энергии: "
-            "силы жизни, уверенности, денег, любви и здоровья.\n\n"
-            "Не потому что родители идеальны.\n"
-            "А потому что мы через них пришли в этот мир. "
-            "И поток идёт только через признание.\n\n"
-            "Послушай практику 👇 и позволь потоку включиться."
-        )
-    )
-    await context.bot.send_audio(chat_id=chat_id, audio=AUDIO_DAY1)
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text=(
-            "✨ Если во время практики было тепло, мурашки, ком в горле или слёзы — "
-            "это значит, что поток начал включаться.\n\n"
-            "Завтра пришлю вторую практику 💙\n\n"
-            "А пока — присоединяйся в наше бесплатное пространство, "
-            "где такие практики проходят вживую:"
-        ),
-        reply_markup=get_group_keyboard()
-    )
-
-
-async def send_day2(context: ContextTypes.DEFAULT_TYPE):
-    chat_id = context.job.chat_id
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text=(
-            "🌿 День 2. Практика для тебя\n\n"
-            "«Отец. Принятие. Масштаб»\n\n"
-            "Можно сколько угодно работать над собой, повышать доход, строить стратегию.\n"
-            "Но если внутри ты выше отца — масштаб будет упираться в потолок.\n\n"
-            "Потому что отец — это первая опора. "
-            "Это энергия структуры, денег, защиты и движения вперёд.\n\n"
-            "Когда отец в сердце — человек не воюет.\n"
-            "Он идёт. Спокойно. С достоинством. Без доказательств.\n\n"
-            "Послушай практику 👇"
-        )
-    )
-    await context.bot.send_audio(chat_id=chat_id, audio=AUDIO_DAY2)
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text=(
-            "После настоящего принятия отца резко растёт доход — "
-            "уходит скрытая конкуренция, снимается запрет «не быть больше него», "
-            "возвращается опора за спиной.\n\n"
-            "Завтра пришлю последнюю практику ✨"
-        ),
-        reply_markup=get_group_keyboard()
-    )
-
-
-async def send_day3(context: ContextTypes.DEFAULT_TYPE):
-    chat_id = context.job.chat_id
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text=(
-            "🌿 День 3. Практика для тебя\n\n"
-            "«Деньги по-женски»\n\n"
-            "Деньги по-женски — это не про напряжение и бег.\n"
-            "Это про состояние. Про мягкость. Про внутренний поток.\n\n"
-            "Когда человек в своей природе — деньги приходят не за усилие, "
-            "а за присутствие. За энергию. За чистоту.\n\n"
-            "Послушай практику 👇 и проговори вслух:\n\n"
-            "«Я выбираю лёгкость. Я позволяю себе изобилие.\n"
-            "Мой поток приносит мне доход естественно.\n"
-            "Я доверяю — и деньги идут. Я в своём.»"
-        )
-    )
-    await context.bot.send_audio(chat_id=chat_id, audio=AUDIO_DAY3)
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text=(
-            "🌟 Ты прошёл(а) три дня — это уже начало пути!\n\n"
-            "Если чувствуешь, что хочешь идти глубже — "
-            "Квантовый взлёт открыт для тебя.\n\n"
-            "Там мы работаем с этим мягко, бережно и глубоко — "
-            "через законы квантового поля и системные расстановки."
-        ),
-        reply_markup=get_course_keyboard()
-    )
-
+def make_keyboard(options):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(label, callback_data=val)] for label, val in options
+    ])
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["answers"] = []
+    q = QUESTIONS[0]
     await update.message.reply_text(
-        "Привет! 🌟 Я помогу тебе узнать, какой паттерн управляет твоей жизнью и отношениями.\n\n"
-        "Отвечай честно — здесь нет правильных или неправильных ответов. "
-        "Это займёт всего 2 минуты 💫\n\n" + QUESTIONS[0]["text"],
-        reply_markup=get_keyboard(QUESTIONS[0]["options"])
+        "Привет! 👋\n\nЯ помогу тебе узнать твой денежный тип и понять, что мешает деньгам приходить.\n\n"
+        "Ответь честно на 6 вопросов — без правильных или неправильных ответов.\n\n" + q["text"],
+        reply_markup=make_keyboard(q["options"])
     )
     return Q1
 
+async def handle_q(update: Update, context: ContextTypes.DEFAULT_TYPE, next_state: int, q_index: int):
+    query = update.callback_query
+    await query.answer()
+    context.user_data.setdefault("answers", []).append(query.data)
+    if q_index < len(QUESTIONS):
+        q = QUESTIONS[q_index]
+        await query.edit_message_text(q["text"], reply_markup=make_keyboard(q["options"]))
+        return next_state
+    return await show_result(query, context)
 
 async def q1(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["answers"].append(update.message.text)
-    await update.message.reply_text(QUESTIONS[1]["text"], reply_markup=get_keyboard(QUESTIONS[1]["options"]))
-    return Q2
-
+    return await handle_q(update, context, Q2, 1)
 
 async def q2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["answers"].append(update.message.text)
-    await update.message.reply_text(QUESTIONS[2]["text"], reply_markup=get_keyboard(QUESTIONS[2]["options"]))
-    return Q3
-
+    return await handle_q(update, context, Q3, 2)
 
 async def q3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["answers"].append(update.message.text)
-    await update.message.reply_text(QUESTIONS[3]["text"], reply_markup=get_keyboard(QUESTIONS[3]["options"]))
-    return Q4
-
+    return await handle_q(update, context, Q4, 3)
 
 async def q4(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["answers"].append(update.message.text)
-    await update.message.reply_text(QUESTIONS[4]["text"], reply_markup=get_keyboard(QUESTIONS[4]["options"]))
-    return Q5
-
+    return await handle_q(update, context, Q5, 4)
 
 async def q5(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["answers"].append(update.message.text)
-    await update.message.reply_text(QUESTIONS[5]["text"], reply_markup=get_keyboard(QUESTIONS[5]["options"]))
-    return Q6
-
+    return await handle_q(update, context, Q6, 5)
 
 async def q6(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["answers"].append(update.message.text)
+    query = update.callback_query
+    await query.answer()
+    context.user_data.setdefault("answers", []).append(query.data)
+    return await show_result(query, context)
+
+async def show_result(query, context: ContextTypes.DEFAULT_TYPE):
     answers = context.user_data.get("answers", [])
-    result = determine_result(answers)
-    chat_id = update.effective_chat.id
-
-    await update.message.reply_text(
-        f"🔮 Твой тип: {result['title']}\n\n{result['text']}\n\n"
-        f"Я подготовила для тебя практику на каждый день — она поможет начать работу прямо сейчас. "
-        f"Завтра пришлю первую 🌟\n\n"
-        f"А пока — присоединяйся в бесплатное пространство, "
-        f"где практики проходят вживую с разборами и медитациями:",
-        reply_markup=get_group_keyboard()
+    result_key = determine_result(answers)
+    result = RESULTS.get(result_key, RESULTS["А"])
+    text = (
+        f"✨ Твой тип: {result['title']}\n\n"
+        f"{result['text']}\n\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"В течение 3 дней ты получишь аудио практики, которые помогут сдвинуть поле.\n"
+        f"А пока — войди в Пространство трансформации 👇"
     )
-
-    context.job_queue.run_once(send_day1, when=timedelta(hours=24), chat_id=chat_id, name=f"day1_{chat_id}")
-    context.job_queue.run_once(send_day2, when=timedelta(hours=48), chat_id=chat_id, name=f"day2_{chat_id}")
-    context.job_queue.run_once(send_day3, when=timedelta(hours=72), chat_id=chat_id, name=f"day3_{chat_id}")
-
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("🌀 Войти в Пространство трансформации", url=LINK_GROUP)
+        ]])
+    )
+    chat_id = query.message.chat_id
+    schedule_user(chat_id)
     return ConversationHandler.END
-
-
-async def get_file_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.voice:
-        await update.message.reply_text(f"file_id: {update.message.voice.file_id}")
-    elif update.message.audio:
-        await update.message.reply_text(f"file_id: {update.message.audio.file_id}")
-    elif update.message.document:
-        await update.message.reply_text(f"file_id: {update.message.document.file_id}")
-
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("До встречи! 🌸", reply_markup=ReplyKeyboardRemove())
-    return ConversationHandler.END
-
 
 def main():
+    init_db()
     app = Application.builder().token(TELEGRAM_TOKEN).build()
-
-    conv_handler = ConversationHandler(
+    conv = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
-            Q1: [MessageHandler(filters.TEXT & ~filters.COMMAND, q1)],
-            Q2: [MessageHandler(filters.TEXT & ~filters.COMMAND, q2)],
-            Q3: [MessageHandler(filters.TEXT & ~filters.COMMAND, q3)],
-            Q4: [MessageHandler(filters.TEXT & ~filters.COMMAND, q4)],
-            Q5: [MessageHandler(filters.TEXT & ~filters.COMMAND, q5)],
-            Q6: [MessageHandler(filters.TEXT & ~filters.COMMAND, q6)],
+            Q1: [CallbackQueryHandler(q1)],
+            Q2: [CallbackQueryHandler(q2)],
+            Q3: [CallbackQueryHandler(q3)],
+            Q4: [CallbackQueryHandler(q4)],
+            Q5: [CallbackQueryHandler(q5)],
+            Q6: [CallbackQueryHandler(q6)],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=[CommandHandler("start", start)],
     )
+    app.add_handler(conv)
 
-    app.add_handler(conv_handler)
-    app.add_handler(MessageHandler(filters.AUDIO | filters.VOICE | filters.Document.ALL, get_file_id))
+    async def post_init(application):
+        asyncio.create_task(scheduler_loop(application.bot))
+
+    app.post_init = post_init
+    logger.info("Бот запущен")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
-
 
 if __name__ == "__main__":
     main()
