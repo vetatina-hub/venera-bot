@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
+    MessageHandler, filters,
     ContextTypes, ConversationHandler
 )
 
@@ -22,10 +23,12 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 AUDIO_DAY1 = "CQACAgIAAxkBAANtagh5cIL3yA1nQR8rKLAqadhzdY4AAqWfAAIIvUhIiI1CwUPzu4w7BA"
 AUDIO_DAY2 = "CQACAgIAAxkBAANuagh5hFRO-fCMyBCUahQCJrjWnPEAAqefAAIIvUhI2o2YSisvMhc7BA"
 AUDIO_DAY3 = "CQACAgIAAxkBAANvagh5jD1k50uSW-VmT9OinlJTLaYAAqmfAAIIvUhIw0Or60pgtFE7BA"
+AUDIO_DAY4 = "PLACEHOLDER_DAY4"  # заменим после получения file_id
 
 LINK_GROUP = "https://t.me/+2v5c8znsaONjY2Fi"
 LINK_KVANT = "https://vetatina-hub.github.io/kvantoviy-vzlet/"
 LINK_ALKHIM = "https://vetatina-hub.github.io/alkhimiya-deneg/"
+LINK_VENERA = "https://t.me/vetatina"
 
 CAPTION_DAY1 = """🌟 Практика Дня 1: «Родители — источник силы, а не боли»
 
@@ -43,40 +46,14 @@ CAPTION_DAY1 = """🌟 Практика Дня 1: «Родители — ист�
 Не потому что родители идеальны.
 А потому что мы через них пришли в этот мир. И поток идёт только через признание.
 
-Как только мы отпускаем оценки, «как они должны были», и смотрим на факт:
+Как только мы отпускаем оценки и смотрим на факт:
 «Они дали мне жизнь — самое дорогое» —
 поток силы возвращается.
 
-И всё начинает идти легче:
-• тело расслабляется,
-• деньги приходят стабильнее,
-• отношения становятся тёплее,
-• тревога уменьшается,
-• появляется ясность и опора.
-
-Потому что мы больше не тянем чужую боль, а берём своё.
-
-✨ Если во время практики было:
-• тепло,
-• мурашки,
-• тяжесть,
-• ком в горле,
-• слёзы,
-• сопротивление —
-
+✨ Если во время практики было тепло, мурашки, слёзы или сопротивление —
 это значит, что поток начал включаться.
 
-В «Квантовом взлёте» мы делаем это мягко, бережно и глубоко —
-и именно через принятие родителей у людей:
-• закрываются долги,
-• проходят страхи,
-• возвращается энергия,
-• восстанавливаются отношения,
-• приходят деньги,
-• исчезают внутренние запреты.
-
-Если почувствовали отклик — вы уже на пути.
-Квантовый взлёт — это место, где этот сдвиг становится постоянным 🌿"""
+Хочешь углубить это состояние? Присоединяйся в Пространство трансформации 🌿"""
 
 CAPTION_DAY2 = """🌟 Практика Дня 2: «Отец. Принятие. Масштаб»
 
@@ -88,45 +65,15 @@ CAPTION_DAY2 = """🌟 Практика Дня 2: «Отец. Принятие. 
 Но если внутри она выше отца —
 масштаб будет упираться в потолок.
 
-Почему?
-
-Потому что отец — это первая мужская опора.
+Потому что отец — это первая опора.
 Это энергия структуры. Денег. Защиты. Движения вперёд.
 
-Когда внутри звучит:
-• «Он слабый»
-• «Я сильнее»
-• «Я бы справилась лучше»
-• «Мне на него нельзя опираться»
+Практика:
+Закрой глаза. Представь отца. Скажи внутри:
+«Папа, я вижу тебя. Ты дал мне жизнь.
+Я беру от тебя силу и опору. Спасибо.»
 
-— женщина автоматически занимает мужское место.
-
-И тогда происходит перекос:
-🔹 она конкурирует с мужчинами
-🔹 выбирает эмоционально недоступных партнёров
-🔹 зарабатывает через напряжение
-🔹 не чувствует защищённости даже при больших деньгах
-🔹 постоянно доказывает
-
-Почему после настоящего принятия отца резко растёт доход?
-
-Потому что:
-• уходит скрытая конкуренция,
-• исчезает внутренний протест,
-• снимается запрет «не быть больше него»,
-• возвращается мужская опора за спиной.
-
-Когда отец в сердце —
-женщина не воюет.
-Она идёт.
-Спокойно. С достоинством. Без доказательств.
-
-Отец — это не про идеальность.
-Это про источник жизни.
-
-Когда вы перестаёте быть выше —
-жизнь начинает течь легче.
-И деньги тоже.
+Сделай три глубоких вдоха.
 
 Квантовый взлёт — здесь мы убираем этот перекос навсегда 🌿"""
 
@@ -134,45 +81,37 @@ CAPTION_DAY3 = """🌟 Практика Дня 3: «Деньги по-женск
 
 Доброе утро ☀️
 
-Деньги по-женски — это не про напряжение, не про бег, не про выжимание из себя последней энергии.
+Деньги по-женски — это не про напряжение и бег.
+Это про состояние. Про мягкость. Про внутренний поток.
 
-Это про состояние.
-Про мягкость.
-Про внутренний поток.
-Про способность быть, а не доказывать.
-
-Когда женщина идёт по-женски, деньги приходят не «за усилие», а за её присутствие.
-За её энергию. За её отклик. За её чистоту.
-
-✨ Деньги по-женски — это когда я не завоевываю, а притягиваю.
-✨ Когда я не контролирую, а доверяю.
-✨ Когда я не выжимаю себя, а раскрываюсь.
-
-Почему у многих женщин перекрыт этот поток?
-
-Потому что в теле живут мужские сценарии:
-— «Только тяжёлым трудом можно заработать»
-— «Надо терпеть»
-— «Надо быть сильной, чтобы выжить»
-— «Надо тянуть всё самой»
-
-💗 Женские деньги — это про то, когда я нахожусь в своей природе.
-В лёгкости. В доверии. В принятии. В ценности.
-
-И когда я возвращаюсь в себя,
-деньги возвращаются ко мне.
-
-🌌 Квант-утверждение:
-
-Я выбираю деньги по-женски.
-Я позволяю себе лёгкость, изобилие и поддержку.
-Мой женский поток приносит мне доход естественно.
-Я мягкая — и я богатая.
+Квант-утверждение (проговори вслух):
+«Я выбираю лёгкость.
+Я позволяю себе изобилие и поддержку.
+Мой поток приносит мне доход естественно.
 Я доверяю — и деньги идут.
-Я в своём. Я в женском.
+Я в своём.»
 
-Вы прошли 3 дня практик. Что-то внутри уже сдвинулось.
-Если хотите, чтобы этот сдвиг стал постоянным — вы знаете, где это происходит 🌿"""
+Ты прошла три дня — это уже начало пути 🌟"""
+
+CAPTION_DAY4 = """🌟 Практика Дня 4: «Я беру свою судьбу в свои руки»
+
+Когда женщина говорит эту фразу — она возвращает себе то, что когда-то отдала:
+силу, выбор, ответственность, направление своей жизни.
+
+Эта фраза возвращает тебя:
+• в свой путь
+• в свою силу
+• в свою взрослость
+• в свой выбор
+
+И ты начинаешь действовать иначе —
+спокойно, уверенно, без страха что «делаешь что-то не так».
+
+🔥 Если ты чувствуешь что наконец хочешь взять свою судьбу в свои руки —
+но не понимаешь как это сделать глубоко и без боли —
+
+напиши Венере лично 👇
+Она посмотрит твою ситуацию и скажет что именно блокирует твой поток."""
 
 Q1, Q2, Q3, Q4, Q5, Q6 = range(6)
 
@@ -326,12 +265,26 @@ def schedule_user(chat_id: int):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM scheduled_messages WHERE chat_id = %s AND sent = FALSE", (chat_id,))
-            for day in [1, 2, 3]:
-                send_at = now + timedelta(hours=24 * day)
-                cur.execute(
-                    "INSERT INTO scheduled_messages (chat_id, day, send_at) VALUES (%s, %s, %s)",
-                    (chat_id, day, send_at)
-                )
+            # День 1 — через 2 минуты
+            cur.execute(
+                "INSERT INTO scheduled_messages (chat_id, day, send_at) VALUES (%s, %s, %s)",
+                (chat_id, 1, now + timedelta(minutes=2))
+            )
+            # День 2 — через 24 часа
+            cur.execute(
+                "INSERT INTO scheduled_messages (chat_id, day, send_at) VALUES (%s, %s, %s)",
+                (chat_id, 2, now + timedelta(hours=24))
+            )
+            # День 3 — через 48 часов
+            cur.execute(
+                "INSERT INTO scheduled_messages (chat_id, day, send_at) VALUES (%s, %s, %s)",
+                (chat_id, 3, now + timedelta(hours=48))
+            )
+            # День 4 — через 72 часа
+            cur.execute(
+                "INSERT INTO scheduled_messages (chat_id, day, send_at) VALUES (%s, %s, %s)",
+                (chat_id, 4, now + timedelta(hours=72))
+            )
             conn.commit()
     logger.info(f"Запланированы практики для {chat_id}")
 
@@ -345,7 +298,6 @@ async def send_day_message(bot, chat_id: int, day: int):
                 caption=CAPTION_DAY1,
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🌀 Войти в Пространство трансформации", url=LINK_GROUP)],
-                    [InlineKeyboardButton("✨ Квантовый взлёт", url=LINK_KVANT)],
                 ])
             )
         elif day == 2:
@@ -364,19 +316,33 @@ async def send_day_message(bot, chat_id: int, day: int):
                 audio=AUDIO_DAY3,
                 caption=CAPTION_DAY3,
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🌀 Войти в Пространство трансформации", url=LINK_GROUP)],
                     [InlineKeyboardButton("✨ Квантовый взлёт", url=LINK_KVANT)],
-                    [InlineKeyboardButton("💎 Алхимия денег", url=LINK_ALKHIM)],
                 ])
             )
-        logger.info(f"Отправлена практика дня {day} пользователю {chat_id}")
+        elif day == 4:
+            await bot.send_audio(
+                chat_id=chat_id,
+                audio=AUDIO_DAY4,
+                caption=CAPTION_DAY4,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("💫 Написать Венере лично", url=LINK_VENERA)],
+                ])
+            )
+        logger.info(f"✅ Отправлена практика дня {day} → {chat_id}")
     except Exception as e:
-        logger.error(f"Ошибка отправки дня {day} для {chat_id}: {e}")
+        logger.error(f"❌ Ошибка отправки дня {day} для {chat_id}: {e}")
 
 
-# ✅ ИСПРАВЛЕНИЕ: планировщик запускается как фоновая задача приложения
+# ✅ Логирование file_id любого аудио отправленного боту
+async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    audio = update.message.audio or update.message.voice
+    if audio:
+        logger.info(f"🎵 AUDIO FILE_ID: {audio.file_id}")
+        await update.message.reply_text(f"file_id:\n`{audio.file_id}`", parse_mode="Markdown")
+
+
 async def scheduler_loop(bot):
-    logger.info("Планировщик практик запущен ✅")
+    logger.info("✅ Планировщик практик запущен")
     while True:
         try:
             now = datetime.now(timezone.utc)
@@ -396,7 +362,6 @@ async def scheduler_loop(bot):
                             (row["id"],)
                         )
                     conn.commit()
-                    logger.info(f"✅ Практика дня {row['day']} отправлена → {row['chat_id']}")
 
         except Exception as e:
             logger.error(f"Ошибка в scheduler_loop: {e}")
@@ -478,7 +443,7 @@ async def show_result(query, context: ContextTypes.DEFAULT_TYPE):
         f"✨ Твой тип: {result['title']}\n\n"
         f"{result['text']}\n\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"В течение 3 дней ты получишь аудио практики, которые помогут сдвинуть поле.\n"
+        f"В течение 4 дней ты получишь аудио практики, которые помогут сдвинуть поле.\n"
         f"А пока — войди в Пространство трансформации 👇"
     )
 
@@ -512,10 +477,12 @@ def main():
     )
     app.add_handler(conv)
 
-    # ✅ ИСПРАВЛЕНИЕ: правильный запуск планировщика через on_startup
+    # ✅ Обработчик аудио — показывает file_id
+    app.add_handler(MessageHandler(filters.AUDIO | filters.VOICE, handle_audio))
+
     async def on_startup(app):
         asyncio.ensure_future(scheduler_loop(app.bot))
-        logger.info("✅ Планировщик практик запущен")
+        logger.info("✅ Планировщик запущен")
 
     app.post_init = on_startup
 
