@@ -23,8 +23,8 @@ AUDIO_DAY1 = "CQACAgIAAxkBAANtagh5cIL3yA1nQR8rKLAqadhzdY4AAqWfAAIIvUhIiI1CwUPzu4
 AUDIO_DAY2 = "CQACAgIAAxkBAANuagh5hFRO-fCMyBCUahQCJrjWnPEAAqefAAIIvUhI2o2YSisvMhc7BA"
 AUDIO_DAY3 = "CQACAgIAAxkBAANvagh5jD1k50uSW-VmT9OinlJTLaYAAqmfAAIIvUhIw0Or60pgtFE7BA"
 
-LINK_GROUP  = "https://t.me/+2v5c8znsaONjY2Fi"
-LINK_KVANT  = "https://vetatina-hub.github.io/kvantoviy-vzlet/"
+LINK_GROUP = "https://t.me/+2v5c8znsaONjY2Fi"
+LINK_KVANT = "https://vetatina-hub.github.io/kvantoviy-vzlet/"
 LINK_ALKHIM = "https://vetatina-hub.github.io/alkhimiya-deneg/"
 
 CAPTION_DAY1 = """🌟 Практика Дня 1: «Родители — источник силы, а не боли»
@@ -32,6 +32,7 @@ CAPTION_DAY1 = """🌟 Практика Дня 1: «Родители — ист�
 Всем исполнения ваших мечт ❤️
 
 Когда мы смотрим на родителей через боль, обиду, недовольство или сравнение — мы бессознательно закрываем главный источник энергии, через который к нам приходит:
+
 • сила жизни,
 • уверенность,
 • реализация,
@@ -62,9 +63,8 @@ CAPTION_DAY1 = """🌟 Практика Дня 1: «Родители — ист�
 • ком в горле,
 • слёзы,
 • сопротивление —
-это значит, что поток начал включаться.
 
-И следующий шаг — углубить это состояние, чтобы сила рода стала вашей опорой каждый день.
+это значит, что поток начал включаться.
 
 В «Квантовом взлёте» мы делаем это мягко, бережно и глубоко —
 и именно через принятие родителей у людей:
@@ -83,25 +83,22 @@ CAPTION_DAY2 = """🌟 Практика Дня 2: «Отец. Принятие. 
 Доброе утро ☀️
 
 Женщина может сколько угодно работать над самооценкой,
-проходить тренинги,
-повышать чек,
-строить стратегию.
+проходить тренинги, повышать чек, строить стратегию.
 
 Но если внутри она выше отца —
 масштаб будет упираться в потолок.
 
 Почему?
+
 Потому что отец — это первая мужская опора.
-Это энергия структуры.
-Денег.
-Защиты.
-Движения вперёд.
+Это энергия структуры. Денег. Защиты. Движения вперёд.
 
 Когда внутри звучит:
 • «Он слабый»
 • «Я сильнее»
 • «Я бы справилась лучше»
 • «Мне на него нельзя опираться»
+
 — женщина автоматически занимает мужское место.
 
 И тогда происходит перекос:
@@ -111,9 +108,8 @@ CAPTION_DAY2 = """🌟 Практика Дня 2: «Отец. Принятие. 
 🔹 не чувствует защищённости даже при больших деньгах
 🔹 постоянно доказывает
 
-И самое главное — масштаб даётся через борьбу.
-
 Почему после настоящего принятия отца резко растёт доход?
+
 Потому что:
 • уходит скрытая конкуренция,
 • исчезает внутренний протест,
@@ -123,32 +119,15 @@ CAPTION_DAY2 = """🌟 Практика Дня 2: «Отец. Принятие. 
 Когда отец в сердце —
 женщина не воюет.
 Она идёт.
-Спокойно.
-С достоинством.
-Без доказательств.
-
-Как понять, что принятие настоящее, а не «уговорила себя»?
-Очень просто. Вы:
-• перестаёте обсуждать его слабость,
-• не оправдываете его,
-• не защищаете его,
-• не доказываете, что он плохой,
-• не сравниваете мужчин с ним.
-
-Внутри появляется тишина.
-
-И самое неожиданное —
-иногда после этого поднимается страх одиночества.
-Потому что больше не нужно быть сильнее.
-А это непривычно.
+Спокойно. С достоинством. Без доказательств.
 
 Отец — это не про идеальность.
 Это про источник жизни.
+
 Когда вы перестаёте быть выше —
 жизнь начинает течь легче.
 И деньги тоже.
 
-Если эта тема отзывается — значит пришло время посмотреть глубже.
 Квантовый взлёт — здесь мы убираем этот перекос навсегда 🌿"""
 
 CAPTION_DAY3 = """🌟 Практика Дня 3: «Деньги по-женски»
@@ -156,40 +135,35 @@ CAPTION_DAY3 = """🌟 Практика Дня 3: «Деньги по-женск
 Доброе утро ☀️
 
 Деньги по-женски — это не про напряжение, не про бег, не про выжимание из себя последней энергии.
+
 Это про состояние.
 Про мягкость.
 Про внутренний поток.
 Про способность быть, а не доказывать.
 
 Когда женщина идёт по-женски, деньги приходят не «за усилие», а за её присутствие.
-За её энергию.
-За её отклик.
-За её чистоту.
+За её энергию. За её отклик. За её чистоту.
 
 ✨ Деньги по-женски — это когда я не завоевываю, а притягиваю.
 ✨ Когда я не контролирую, а доверяю.
 ✨ Когда я не выжимаю себя, а раскрываюсь.
 
 Почему у многих женщин перекрыт этот поток?
+
 Потому что в теле живут мужские сценарии:
 — «Только тяжёлым трудом можно заработать»
 — «Надо терпеть»
 — «Надо быть сильной, чтобы выжить»
 — «Надо тянуть всё самой»
 
-И тогда женщина перестаёт быть женщиной.
-Она начинает жить на мужском топливе — и устаёт, горит, ломается, срывается.
-
 💗 Женские деньги — это про то, когда я нахожусь в своей природе.
-В лёгкости.
-В доверии.
-В принятии.
-В ценности.
+В лёгкости. В доверии. В принятии. В ценности.
 
 И когда я возвращаюсь в себя,
 деньги возвращаются ко мне.
 
 🌌 Квант-утверждение:
+
 Я выбираю деньги по-женски.
 Я позволяю себе лёгкость, изобилие и поддержку.
 Мой женский поток приносит мне доход естественно.
@@ -325,8 +299,10 @@ RESULTS = {
     },
 }
 
+
 def get_conn():
     return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+
 
 def init_db():
     with get_conn() as conn:
@@ -341,8 +317,9 @@ def init_db():
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 )
             """)
-        conn.commit()
+            conn.commit()
     logger.info("DB инициализирована")
+
 
 def schedule_user(chat_id: int):
     now = datetime.now(timezone.utc)
@@ -355,8 +332,9 @@ def schedule_user(chat_id: int):
                     "INSERT INTO scheduled_messages (chat_id, day, send_at) VALUES (%s, %s, %s)",
                     (chat_id, day, send_at)
                 )
-        conn.commit()
+            conn.commit()
     logger.info(f"Запланированы практики для {chat_id}")
+
 
 async def send_day_message(bot, chat_id: int, day: int):
     try:
@@ -395,7 +373,10 @@ async def send_day_message(bot, chat_id: int, day: int):
     except Exception as e:
         logger.error(f"Ошибка отправки дня {day} для {chat_id}: {e}")
 
+
+# ✅ ИСПРАВЛЕНИЕ: планировщик запускается как фоновая задача приложения
 async def scheduler_loop(bot):
+    logger.info("Планировщик практик запущен ✅")
     while True:
         try:
             now = datetime.now(timezone.utc)
@@ -406,14 +387,22 @@ async def scheduler_loop(bot):
                         WHERE sent = FALSE AND send_at <= %s
                     """, (now,))
                     rows = cur.fetchall()
+
                 for row in rows:
                     await send_day_message(bot, row["chat_id"], row["day"])
                     with conn.cursor() as cur2:
-                        cur2.execute("UPDATE scheduled_messages SET sent = TRUE WHERE id = %s", (row["id"],))
+                        cur2.execute(
+                            "UPDATE scheduled_messages SET sent = TRUE WHERE id = %s",
+                            (row["id"],)
+                        )
                     conn.commit()
+                    logger.info(f"✅ Практика дня {row['day']} отправлена → {row['chat_id']}")
+
         except Exception as e:
             logger.error(f"Ошибка в scheduler_loop: {e}")
+
         await asyncio.sleep(60)
+
 
 def determine_result(answers: list) -> str:
     from collections import Counter
@@ -429,10 +418,12 @@ def determine_result(answers: list) -> str:
     combos = {("А", "Г"): "АГ", ("Б", "Г"): "БГ", ("Б", "В"): "ВБ"}
     return combos.get(pair, leaders[0])
 
+
 def make_keyboard(options):
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(label, callback_data=val)] for label, val in options
     ])
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["answers"] = []
@@ -444,6 +435,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return Q1
 
+
 async def handle_q(update: Update, context: ContextTypes.DEFAULT_TYPE, next_state: int, q_index: int):
     query = update.callback_query
     await query.answer()
@@ -453,6 +445,7 @@ async def handle_q(update: Update, context: ContextTypes.DEFAULT_TYPE, next_stat
         await query.edit_message_text(q["text"], reply_markup=make_keyboard(q["options"]))
         return next_state
     return await show_result(query, context)
+
 
 async def q1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await handle_q(update, context, Q2, 1)
@@ -475,10 +468,12 @@ async def q6(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.setdefault("answers", []).append(query.data)
     return await show_result(query, context)
 
+
 async def show_result(query, context: ContextTypes.DEFAULT_TYPE):
     answers = context.user_data.get("answers", [])
     result_key = determine_result(answers)
     result = RESULTS.get(result_key, RESULTS["А"])
+
     text = (
         f"✨ Твой тип: {result['title']}\n\n"
         f"{result['text']}\n\n"
@@ -486,19 +481,23 @@ async def show_result(query, context: ContextTypes.DEFAULT_TYPE):
         f"В течение 3 дней ты получишь аудио практики, которые помогут сдвинуть поле.\n"
         f"А пока — войди в Пространство трансформации 👇"
     )
+
     await query.edit_message_text(
         text,
         reply_markup=InlineKeyboardMarkup([[
             InlineKeyboardButton("🌀 Войти в Пространство трансформации", url=LINK_GROUP)
         ]])
     )
+
     chat_id = query.message.chat_id
     schedule_user(chat_id)
     return ConversationHandler.END
 
+
 def main():
     init_db()
     app = Application.builder().token(TELEGRAM_TOKEN).build()
+
     conv = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -513,12 +512,16 @@ def main():
     )
     app.add_handler(conv)
 
-    async def post_init(application):
-        asyncio.create_task(scheduler_loop(application.bot))
+    # ✅ ИСПРАВЛЕНИЕ: правильный запуск планировщика через on_startup
+    async def on_startup(app):
+        asyncio.ensure_future(scheduler_loop(app.bot))
+        logger.info("✅ Планировщик практик запущен")
 
-    app.post_init = post_init
+    app.post_init = on_startup
+
     logger.info("Бот запущен")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
+
 
 if __name__ == "__main__":
     main()
