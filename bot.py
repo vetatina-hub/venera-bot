@@ -23,7 +23,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 AUDIO_DAY1 = "CQACAgIAAxkBAANtagh5cIL3yA1nQR8rKLAqadhzdY4AAqWfAAIIvUhIiI1CwUPzu4w7BA"
 AUDIO_DAY2 = "CQACAgIAAxkBAANuagh5hFRO-fCMyBCUahQCJrjWnPEAAqefAAIIvUhI2o2YSisvMhc7BA"
 AUDIO_DAY3 = "CQACAgIAAxkBAANvagh5jD1k50uSW-VmT9OinlJTLaYAAqmfAAIIvUhIw0Or60pgtFE7BA"
-AUDIO_DAY4 = "PLACEHOLDER_DAY4"  # заменим после получения file_id
+AUDIO_DAY4 = "CQACAgIAAxkBAAIBEGpT4PdbiiBP2G1hm1pG70F0PJE_AAIesgAC4l-hSl1T0dFGMRZrPAQ"
 
 LINK_GROUP = "https://t.me/+2v5c8znsaONjY2Fi"
 LINK_KVANT = "https://vetatina-hub.github.io/kvantoviy-vzlet/"
@@ -350,7 +350,7 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if media:
         kind = "audio" if msg.audio else ("voice" if msg.voice else "document")
         logger.info(f"🎵 FILE_ID ({kind}): {media.file_id}")
-        await msg.reply_text(f"Тип: {kind}\nfile_id:\n`{media.file_id}`", parse_mode="Markdown")
+        await msg.reply_text(f"Тип: {kind}\nfile_id:\n{media.file_id}")
 
 
 async def scheduler_loop(bot):
