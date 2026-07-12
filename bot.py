@@ -320,25 +320,37 @@ async def send_day_message(bot, chat_id: int, day: int):
                 ])
             )
         elif day == 4:
-            await bot.send_audio(
-                chat_id=chat_id,
-                audio=AUDIO_DAY4,
-                caption=CAPTION_DAY4,
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("💫 Написать Венере лично", url=LINK_VENERA)],
-                ])
-            )
+            kb4 = InlineKeyboardMarkup([
+                [InlineKeyboardButton("💫 Написать Венере лично", url=LINK_VENERA)],
+            ])
+            try:
+                await bot.send_audio(
+                    chat_id=chat_id,
+                    audio=AUDIO_DAY4,
+                    caption=CAPTION_DAY4,
+                    reply_markup=kb4
+                )
+            except Exception:
+                # если file_id сохранён как документ — отправляем как документ
+                await bot.send_document(
+                    chat_id=chat_id,
+                    document=AUDIO_DAY4,
+                    caption=CAPTION_DAY4,
+                    reply_markup=kb4
+                )
         logger.info(f"✅ Отправлена практика дня {day} → {chat_id}")
     except Exception as e:
         logger.error(f"❌ Ошибка отправки дня {day} для {chat_id}: {e}")
 
 
-# ✅ Логирование file_id любого аудио отправленного боту
+# ✅ Логирование file_id любого аудио/файла отправленного боту
 async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    audio = update.message.audio or update.message.voice
-    if audio:
-        logger.info(f"🎵 AUDIO FILE_ID: {audio.file_id}")
-        await update.message.reply_text(f"file_id:\n`{audio.file_id}`", parse_mode="Markdown")
+    msg = update.message
+    media = msg.audio or msg.voice or msg.document
+    if media:
+        kind = "audio" if msg.audio else ("voice" if msg.voice else "document")
+        logger.info(f"🎵 FILE_ID ({kind}): {media.file_id}")
+        await msg.reply_text(f"Тип: {kind}\nfile_id:\n`{media.file_id}`", parse_mode="Markdown")
 
 
 async def scheduler_loop(bot):
@@ -478,7 +490,7 @@ def main():
     app.add_handler(conv)
 
     # ✅ Обработчик аудио — показывает file_id
-    app.add_handler(MessageHandler(filters.AUDIO | filters.VOICE, handle_audio))
+    app.add_handler(MessageHandler(filters.AUDIO | filters.VOICE | filters.Document.ALL, handle_audio))
 
     async def on_startup(app):
         asyncio.ensure_future(scheduler_loop(app.bot))
