@@ -501,6 +501,7 @@ def main():
 
     async def on_startup(app):
         asyncio.ensure_future(scheduler_loop(app.bot))
+        asyncio.ensure_future(course.course_loop(app.bot))
         logger.info("✅ Планировщик запущен")
 
     app.post_init = on_startup

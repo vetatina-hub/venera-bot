@@ -1,15 +1,21 @@
 # -*- coding: utf-8 -*-
 """
 course.py — курс «Квантовый взлёт» в боте @venera_tatina_bot
-Пилот: Модуль 1, Урок 1 «Путь героя»
-Отдельный файл: если что-то ломается в курсе — чиним только здесь,
-диагностика и воронка в bot.py не трогаются.
+Версия 2: пилот Урок 1 + пауза + прогресс учениц + срок доступа 4 месяца
+
+Правила доступа:
+- /add @username — доступ на 4 месяца (та же команда продлевает и снимает паузу)
+- /pause @username — точечная пауза для одной ученицы
+- За 2 недели до конца срока бот сам присылает напоминание
+- Срок вышел или пауза → вежливое сообщение + кнопка «Написать Венере»
 """
 
 import os
+import asyncio
 import logging
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from datetime import datetime, timedelta, timezone
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -21,8 +27,9 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 
 # ============ НАСТРОЙКИ ============
 
-# Админ курса — Венера (по username в Telegram, без @)
-ADMIN_USERNAME = "vetatina"
+ADMIN_USERNAME = "vetatina"          # админ курса — Венера (username без @)
+ACCESS_DAYS = 120                    # срок доступа: 4 месяца (3 мес курс + 1 мес повторение)
+REMIND_BEFORE_DAYS = 14              # напоминание за 2 недели до конца
 
 LINK_VENERA = "https://t.me/vetatina"
 
@@ -73,6 +80,10 @@ def init_course_db():
                     added_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 )
             """)
+            # Новые колонки (добавятся один раз, старые данные не пострадают)
+            cur.execute("ALTER TABLE course_students ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE")
+            cur.execute("ALTER TABLE course_students ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP WITH TIME ZONE")
+            cur.execute("ALTER TABLE course_students ADD COLUMN IF NOT EXISTS reminder_sent BOOLEAN DEFAULT FALSE")
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS course_progress (
                     id SERIAL PRIMARY KEY,
@@ -94,32 +105,56 @@ def init_course_db():
     logger.info("✅ Таблицы курса готовы")
 
 
-# ============ ПРОВЕРКА ДОСТУПА ============
+# ============ ДОСТУП ============
 
 def is_admin(update: Update) -> bool:
     user = update.effective_user
     return bool(user and user.username and user.username.lower() == ADMIN_USERNAME.lower())
 
 
-def is_student(update: Update) -> bool:
+def get_student_status(update: Update) -> str:
+    """Возвращает: 'ok' — доступ открыт · 'paused' — на паузе ·
+    'expired' — срок вышел · 'none' — не в списке"""
     user = update.effective_user
     chat_id = update.effective_chat.id
     username = (user.username or "").lower() if user else ""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id FROM course_students WHERE chat_id = %s OR (username IS NOT NULL AND LOWER(username) = %s)",
+                "SELECT id, active, expires_at FROM course_students "
+                "WHERE chat_id = %s OR (username IS NOT NULL AND LOWER(username) = %s)",
                 (chat_id, username)
             )
             row = cur.fetchone()
+            if not row:
+                return "none"
             # Запоминаем chat_id, если ученица была добавлена по username
-            if row:
-                cur.execute(
-                    "UPDATE course_students SET chat_id = %s WHERE id = %s AND chat_id IS NULL",
-                    (chat_id, row["id"])
-                )
-                conn.commit()
-    return bool(row)
+            cur.execute(
+                "UPDATE course_students SET chat_id = %s WHERE id = %s AND chat_id IS NULL",
+                (chat_id, row["id"])
+            )
+            conn.commit()
+    if not row["active"]:
+        return "paused"
+    if row["expires_at"] and row["expires_at"] < datetime.now(timezone.utc):
+        return "expired"
+    return "ok"
+
+
+async def deny_message(bot, chat_id: int, status: str):
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💫 Написать Венере", url=LINK_VENERA)]
+    ])
+    if status == "paused":
+        text = ("🌸 Доступ к курсу сейчас на паузе.\n\n"
+                "Напиши Венере — она всё подскажет 👇")
+    elif status == "expired":
+        text = ("🌸 Срок доступа к курсу «Квантовый взлёт» завершился.\n\n"
+                "Хочешь продлить и продолжить путь? Напиши Венере 👇")
+    else:
+        text = ("✨ Курс «Квантовый взлёт» доступен ученицам Академии.\n\n"
+                "Хочешь присоединиться? Напиши Венере лично 👇")
+    await bot.send_message(chat_id, text, reply_markup=kb)
 
 
 def get_balance(chat_id: int) -> int:
@@ -151,19 +186,14 @@ async def send_lesson(bot, chat_id: int, lesson_num: int):
     logger.info(f"📚 Урок {lesson_num} отправлен → {chat_id}")
 
 
-# ============ КОМАНДЫ УЧЕНИЦЫ ============
+# ============ УЧЕНИЦА ============
 
 async def cmd_kurs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Вход в курс: /kurs"""
     chat_id = update.effective_chat.id
-    if not (is_student(update) or is_admin(update)):
-        await update.message.reply_text(
-            "✨ Курс «Квантовый взлёт» доступен ученицам Академии.\n\n"
-            "Хочешь присоединиться? Напиши Венере лично 👇",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("💫 Написать Венере", url=LINK_VENERA)]
-            ])
-        )
+    status = get_student_status(update)
+    if status != "ok" and not is_admin(update):
+        await deny_message(context.bot, chat_id, status)
         return
     await update.message.reply_text(
         "🚀 Добро пожаловать в «Квантовый взлёт»!\n\nОткрываю твой урок..."
@@ -175,6 +205,11 @@ async def cb_dz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Кнопка «📝 Домашнее задание»"""
     query = update.callback_query
     await query.answer()
+    chat_id = query.message.chat_id
+    status = get_student_status(update)
+    if status != "ok" and not is_admin(update):
+        await deny_message(context.bot, chat_id, status)
+        return
     lesson_num = int(query.data.split("_")[-1])
     lesson = LESSONS.get(lesson_num)
     if not lesson or not lesson.get("dz"):
@@ -184,7 +219,7 @@ async def cb_dz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("✅ Сделала", callback_data=f"crs_done_{lesson_num}")],
     ])
     await context.bot.send_document(
-        chat_id=query.message.chat_id,
+        chat_id=chat_id,
         document=lesson["dz"],
         caption=lesson["dz_caption"],
         reply_markup=kb
@@ -195,8 +230,12 @@ async def cb_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Кнопка «✅ Сделала»"""
     query = update.callback_query
     await query.answer("Умница! 🎉")
-    lesson_num = int(query.data.split("_")[-1])
     chat_id = query.message.chat_id
+    status = get_student_status(update)
+    if status != "ok" and not is_admin(update):
+        await deny_message(context.bot, chat_id, status)
+        return
+    lesson_num = int(query.data.split("_")[-1])
     lesson = LESSONS.get(lesson_num)
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -224,52 +263,106 @@ async def cb_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# ============ КОМАНДЫ АДМИНА (только для Венеры) ============
+# ============ АДМИН (только Венера) ============
 
 async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Добавить ученицу: /add @username"""
+    """Дать/продлить доступ: /add @username (4 месяца с этого момента)"""
     if not is_admin(update):
         return
     if not context.args:
         await update.message.reply_text(
-            "Как добавить ученицу:\n/add @username\n\nНапример: /add @anna_k"
+            "Как дать доступ ученице:\n/add @username\n\nНапример: /add @anna_k\n\n"
+            "Эта же команда снимает паузу и продлевает срок ещё на 4 месяца."
+        )
+        return
+    username = context.args[0].lstrip("@").lower()
+    expires = datetime.now(timezone.utc) + timedelta(days=ACCESS_DAYS)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM course_students WHERE LOWER(username) = %s", (username,))
+            row = cur.fetchone()
+            if row:
+                cur.execute(
+                    "UPDATE course_students SET active = TRUE, expires_at = %s, reminder_sent = FALSE WHERE id = %s",
+                    (expires, row["id"])
+                )
+                verb = "продлён"
+            else:
+                cur.execute(
+                    "INSERT INTO course_students (username, active, expires_at) VALUES (%s, TRUE, %s)",
+                    (username, expires)
+                )
+                verb = "открыт"
+            conn.commit()
+    await update.message.reply_text(
+        f"✅ Доступ для @{username} {verb} до {expires.strftime('%d.%m.%Y')}\n\n"
+        f"Передайте ей: открыть @venera_tatina_bot и отправить команду /kurs"
+    )
+
+
+async def cmd_pause(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Поставить на паузу: /pause @username (только эту ученицу)"""
+    if not is_admin(update):
+        return
+    if not context.args:
+        await update.message.reply_text(
+            "Как поставить доступ на паузу:\n/pause @username\n\nНапример: /pause @anna_k\n\n"
+            "Вернуть доступ: /add @username"
         )
         return
     username = context.args[0].lstrip("@").lower()
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id FROM course_students WHERE LOWER(username) = %s", (username,)
-            )
-            if cur.fetchone():
-                await update.message.reply_text(f"@{username} уже в списке учениц ✅")
+            cur.execute("SELECT id FROM course_students WHERE LOWER(username) = %s", (username,))
+            row = cur.fetchone()
+            if not row:
+                await update.message.reply_text(f"@{username} нет в списке учениц. Список: /students")
                 return
-            cur.execute(
-                "INSERT INTO course_students (username) VALUES (%s)", (username,)
-            )
+            cur.execute("UPDATE course_students SET active = FALSE WHERE id = %s", (row["id"],))
             conn.commit()
     await update.message.reply_text(
-        f"✅ @{username} добавлена!\n\n"
-        f"Передайте ей: открыть @venera_tatina_bot и отправить команду /kurs"
+        f"⏸ Доступ для @{username} поставлен на паузу.\n"
+        f"Остальных учениц это не затрагивает.\n\n"
+        f"Вернуть доступ: /add @{username} — прогресс сохранён."
     )
 
 
 async def cmd_students(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Список учениц: /students"""
+    """Список учениц с прогрессом: /students"""
     if not is_admin(update):
         return
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT username, chat_id FROM course_students ORDER BY added_at")
+            cur.execute("""
+                SELECT s.username, s.chat_id, s.active, s.expires_at,
+                       (SELECT MAX(lesson) FROM course_progress p
+                        WHERE p.chat_id = s.chat_id AND p.done = TRUE) AS last_lesson
+                FROM course_students s
+                ORDER BY s.added_at
+            """)
             rows = cur.fetchall()
     if not rows:
-        await update.message.reply_text("Список учениц пока пуст. Добавьте: /add @username")
+        await update.message.reply_text("Список учениц пока пуст. Дать доступ: /add @username")
         return
+    now = datetime.now(timezone.utc)
     lines = []
     for i, r in enumerate(rows, 1):
         name = f"@{r['username']}" if r["username"] else str(r["chat_id"])
-        mark = " · уже заходила в курс" if r["chat_id"] else ""
-        lines.append(f"{i}. {name}{mark}")
+        if r["last_lesson"]:
+            progress = f"Урок {r['last_lesson']} пройден"
+        elif r["chat_id"]:
+            progress = "заходила, уроки не завершала"
+        else:
+            progress = "ещё не заходила"
+        if not r["active"]:
+            status = "⏸ на паузе"
+        elif r["expires_at"] and r["expires_at"] < now:
+            status = "⛔ срок истёк"
+        else:
+            status = "✅ активна"
+            if r["expires_at"]:
+                status += f" до {r['expires_at'].strftime('%d.%m.%Y')}"
+        lines.append(f"{i}. {name} · {progress} · {status}")
     await update.message.reply_text("👩‍🎓 Ученицы курса:\n\n" + "\n".join(lines))
 
 
@@ -287,6 +380,47 @@ async def cmd_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_lesson(context.bot, update.effective_chat.id, num)
 
 
+# ============ НАПОМИНАНИЯ О СРОКЕ (будильник курса) ============
+
+async def course_loop(bot):
+    """Раз в час проверяет: у кого до конца доступа осталось 14 дней —
+    и присылает напоминание (один раз каждой)."""
+    logger.info("✅ Будильник курса запущен")
+    while True:
+        try:
+            now = datetime.now(timezone.utc)
+            remind_edge = now + timedelta(days=REMIND_BEFORE_DAYS)
+            with get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT id, chat_id, expires_at FROM course_students
+                        WHERE active = TRUE AND reminder_sent = FALSE
+                          AND chat_id IS NOT NULL AND expires_at IS NOT NULL
+                          AND expires_at > %s AND expires_at <= %s
+                    """, (now, remind_edge))
+                    rows = cur.fetchall()
+                for row in rows:
+                    try:
+                        await bot.send_message(
+                            row["chat_id"],
+                            f"🔔 Нежное напоминание: доступ к курсу «Квантовый взлёт» "
+                            f"открыт до {row['expires_at'].strftime('%d.%m.%Y')}.\n\n"
+                            f"Самое время завершить свой путь героя ✨"
+                        )
+                        with conn.cursor() as cur2:
+                            cur2.execute(
+                                "UPDATE course_students SET reminder_sent = TRUE WHERE id = %s",
+                                (row["id"],)
+                            )
+                        conn.commit()
+                        logger.info(f"🔔 Напоминание о сроке → {row['chat_id']}")
+                    except Exception as e:
+                        logger.error(f"Ошибка напоминания для {row['chat_id']}: {e}")
+        except Exception as e:
+            logger.error(f"Ошибка в course_loop: {e}")
+        await asyncio.sleep(3600)
+
+
 # ============ ПОДКЛЮЧЕНИЕ К БОТУ ============
 
 def register(app: Application):
@@ -294,6 +428,7 @@ def register(app: Application):
     init_course_db()
     app.add_handler(CommandHandler("kurs", cmd_kurs))
     app.add_handler(CommandHandler("add", cmd_add))
+    app.add_handler(CommandHandler("pause", cmd_pause))
     app.add_handler(CommandHandler("students", cmd_students))
     app.add_handler(CommandHandler("test", cmd_test))
     app.add_handler(CallbackQueryHandler(cb_dz, pattern=r"^crs_dz_\d+$"))
