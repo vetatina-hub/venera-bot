@@ -1,6 +1,7 @@
 import os
 import logging
 import asyncio
+import course
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta, timezone
@@ -494,6 +495,9 @@ def main():
 
     # ✅ Обработчик аудио — показывает file_id
     app.add_handler(MessageHandler(filters.AUDIO | filters.VOICE | filters.Document.ALL, handle_audio))
+
+    # ✅ Курс «Квантовый взлёт» (весь код — в course.py)
+    course.register(app)
 
     async def on_startup(app):
         asyncio.ensure_future(scheduler_loop(app.bot))
