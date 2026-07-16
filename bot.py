@@ -114,7 +114,7 @@ CAPTION_DAY4 = """🌟 Практика Дня 4: «Я беру свою суд�
 напиши Венере лично 👇
 Она посмотрит твою ситуацию и скажет что именно блокирует твой поток."""
 
-Q1, Q2, Q3, Q4, Q5, Q6 = range(6)
+Q1, Q2, Q3, Q4, Q5, Q6, GREETING = range(7)
 
 QUESTIONS = [
     {
@@ -404,10 +404,38 @@ def make_keyboard(options):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args
+    if args and args[0] == "reels":
+        await update.message.reply_text(
+            "✨ Привет! Раз ты здесь — что-то из видео зацепило.\n\n"
+            "Пройди короткий тест — узнаешь, где сейчас твой главный блок: в деньгах, "
+            "отношениях, успехе или здоровье. И что с этим делать.\n\n"
+            "2 минуты. Начнём? 👇",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("Начать", callback_data="reels_start")
+            ]])
+        )
+        return GREETING
+    return await send_first_question(update, context)
+
+
+async def send_first_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["answers"] = []
     q = QUESTIONS[0]
     await update.message.reply_text(
         "Привет! 👋\n\nЯ помогу тебе узнать твой денежный тип и понять, что мешает деньгам приходить.\n\n"
+        "Ответь честно на 6 вопросов — без правильных или неправильных ответов.\n\n" + q["text"],
+        reply_markup=make_keyboard(q["options"])
+    )
+    return Q1
+
+
+async def greeting_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    context.user_data["answers"] = []
+    q = QUESTIONS[0]
+    await query.edit_message_text(
         "Ответь честно на 6 вопросов — без правильных или неправильных ответов.\n\n" + q["text"],
         reply_markup=make_keyboard(q["options"])
     )
@@ -482,6 +510,7 @@ def main():
     conv = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
+            GREETING: [CallbackQueryHandler(greeting_start, pattern="^reels_start$")],
             Q1: [CallbackQueryHandler(q1)],
             Q2: [CallbackQueryHandler(q2)],
             Q3: [CallbackQueryHandler(q3)],
