@@ -27,6 +27,7 @@ AUDIO_DAY3 = "CQACAgIAAxkBAANvagh5jD1k50uSW-VmT9OinlJTLaYAAqmfAAIIvUhIw0Or60pgtF
 AUDIO_DAY4 = "CQACAgIAAxkBAAIBEGpT4PdbiiBP2G1hm1pG70F0PJE_AAIesgAC4l-hSl1T0dFGMRZrPAQ"
 
 LINK_GROUP = "https://t.me/+2v5c8znsaONjY2Fi"
+LINK_GROUP_WA = "https://chat.whatsapp.com/JdXSf1uFlpwJZwUWBv8GbR"
 LINK_KVANT = "https://vetatina-hub.github.io/kvantoviy-vzlet/"
 LINK_ALKHIM = "https://vetatina-hub.github.io/alkhimiya-deneg/"
 LINK_VENERA = "https://t.me/vetatina"
@@ -298,7 +299,8 @@ async def send_day_message(bot, chat_id: int, day: int):
                 audio=AUDIO_DAY1,
                 caption=CAPTION_DAY1,
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🌀 Войти в Пространство трансформации", url=LINK_GROUP)],
+                    [InlineKeyboardButton("🌀 Пространство в Telegram", url=LINK_GROUP)],
+                    [InlineKeyboardButton("🌀 Пространство в WhatsApp", url=LINK_GROUP_WA)],
                 ])
             )
         elif day == 2:
@@ -307,7 +309,8 @@ async def send_day_message(bot, chat_id: int, day: int):
                 audio=AUDIO_DAY2,
                 caption=CAPTION_DAY2,
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🌀 Войти в Пространство трансформации", url=LINK_GROUP)],
+                    [InlineKeyboardButton("🌀 Пространство в Telegram", url=LINK_GROUP)],
+                    [InlineKeyboardButton("🌀 Пространство в WhatsApp", url=LINK_GROUP_WA)],
                     [InlineKeyboardButton("✨ Квантовый взлёт", url=LINK_KVANT)],
                 ])
             )
@@ -502,9 +505,10 @@ async def show_result(query, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_id=query.message.chat_id,
         text=invite_text,
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("🌀 Войти в Пространство трансформации", url=LINK_GROUP)
-        ]])
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🌀 Пространство в Telegram", url=LINK_GROUP)],
+            [InlineKeyboardButton("🌀 Пространство в WhatsApp", url=LINK_GROUP_WA)],
+        ])
     )
 
     chat_id = query.message.chat_id
