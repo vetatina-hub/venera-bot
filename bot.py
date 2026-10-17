@@ -98,6 +98,7 @@ TEXT_SPACE = (
 DAY_INTRO = {
     1: (
         "🎧 Первая практика: «Родители — источник силы, а не боли»\n\n"
+        "Это подарок после теста: короткая аудио-практика примерно на 10 минут.\n\n"
         "Как её слушать:\n"
         "• найди 10 минут, когда тебя никто не отвлечёт;\n"
         "• надень наушники;\n"
@@ -107,7 +108,9 @@ DAY_INTRO = {
         "Не оценивай, просто наблюдай.\n\n"
         "Что она даёт: помогает мягко посмотреть на родителей без обиды и сравнения "
         "и вернуть себе опору, через которую приходят сила и деньги.\n\n"
-        "Практика — следующим сообщением 👇"
+        "Практика — следующим сообщением 👇\n\n"
+        "А если хочется быть среди людей, которые проходят такие практики вместе, "
+        "заходи в Пространство трансформации: там бесплатно, живые практики и разборы 🌿"
     ),
     2: (
         "🎧 Практика Дня 2: «Отец. Принятие. Масштаб»\n\n"
@@ -118,7 +121,7 @@ DAY_INTRO = {
         "Практика — следующим сообщением 👇"
     ),
     3: (
-        "🎧 Практика Дня 3: «Деньги по-женски»\n\n"
+        "🎧 Вторая практика: «Деньги по-женски»\n\n"
         "Она не про напряжение и бег, а про состояние: мягкость, лёгкость, доверие потоку.\n\n"
         "Как слушать: наушники, удобная поза, спокойное место. "
         "В конце повтори квант-утверждение вслух — своим голосом, без спешки.\n\n"
@@ -181,7 +184,7 @@ CAPTION_DAY2 = """🌟 Практика Дня 2: «Отец. Принятие. 
 
 Квантовый взлёт — здесь мы убираем этот перекос навсегда 🌿"""
 
-CAPTION_DAY3 = """🌟 Практика Дня 3: «Деньги по-женски»
+CAPTION_DAY3 = """🌟 Вторая практика: «Деньги по-женски»
 
 Доброе утро ☀️
 
@@ -195,7 +198,7 @@ CAPTION_DAY3 = """🌟 Практика Дня 3: «Деньги по-женск
 Я доверяю — и деньги идут.
 Я в своём.»
 
-Ты прошла три дня — это уже начало пути 🌟"""
+Это уже начало пути 🌟"""
 
 CAPTION_DAY4 = """🌟 Практика Дня 4: «Я беру свою судьбу в свои руки»
 
@@ -444,8 +447,57 @@ def init_db():
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 )
             """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                )
+            """)
             conn.commit()
     logger.info("DB инициализирована")
+
+
+def get_admin_chat():
+    """Чат Венеры, куда бот присылает заявки (задаётся командой /admin)"""
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT value FROM settings WHERE key = 'admin_chat'")
+                row = cur.fetchone()
+                return int(row["value"]) if row else None
+    except Exception as e:
+        logger.error(f"Не удалось прочитать admin_chat: {e}")
+        return None
+
+
+def set_admin_chat(chat_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO settings (key, value) VALUES ('admin_chat', %s) "
+                "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+                (str(chat_id),)
+            )
+            conn.commit()
+
+
+def who(user) -> str:
+    if user is None:
+        return "—"
+    name = " ".join(x for x in [user.first_name, user.last_name] if x) or "Без имени"
+    uname = f"@{user.username}" if user.username else "без username"
+    return f"{name} ({uname}, id {user.id})"
+
+
+async def notify_admin(bot, text: str):
+    """Присылает Венере сообщение о клиенте. Ошибки не мешают работе бота."""
+    chat = get_admin_chat()
+    if not chat:
+        return
+    try:
+        await bot.send_message(chat_id=chat, text=text)
+    except Exception as e:
+        logger.error(f"Не удалось отправить уведомление админу: {e}")
 
 
 def schedule_user(chat_id: int):
@@ -453,43 +505,50 @@ def schedule_user(chat_id: int):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM scheduled_messages WHERE chat_id = %s AND sent = FALSE", (chat_id,))
-            # День 1 — через 2 минуты
+            # 1 — практика в подарок, через 10 минут
             cur.execute(
                 "INSERT INTO scheduled_messages (chat_id, day, send_at) VALUES (%s, %s, %s)",
-                (chat_id, 1, now + timedelta(minutes=2))
+                (chat_id, 1, now + timedelta(minutes=10))
             )
-            # День 2 — через 24 часа
+            # 2 — «что заметила», второй тест и приглашения, через 24 часа
             cur.execute(
                 "INSERT INTO scheduled_messages (chat_id, day, send_at) VALUES (%s, %s, %s)",
                 (chat_id, 2, now + timedelta(hours=24))
             )
-            # День 3 — через 48 часов
+            # 3 — вторая практика, мягкий рассказ о Денежном взлёте, Пространство и диагностика, через 72 часа
             cur.execute(
                 "INSERT INTO scheduled_messages (chat_id, day, send_at) VALUES (%s, %s, %s)",
-                (chat_id, 3, now + timedelta(hours=48))
-            )
-            # День 4 — через 72 часа
-            cur.execute(
-                "INSERT INTO scheduled_messages (chat_id, day, send_at) VALUES (%s, %s, %s)",
-                (chat_id, 4, now + timedelta(hours=72))
+                (chat_id, 3, now + timedelta(hours=72))
             )
             conn.commit()
-    logger.info(f"Запланированы практики для {chat_id}")
+    logger.info(f"Запланированы сообщения для {chat_id}")
+
+
+DAY2_CHECKIN = (
+    "Как ты? 🌿\n\n"
+    "Что ты заметила за этот день — в мыслях, в теле, в отношениях с деньгами или близкими? "
+    "Иногда самое важное видно именно в мелочах.\n\n"
+    "Если интересно, есть второй короткий тест: «Скрытая денежная программа». "
+    "10 вопросов, около 3 минут. Он показывает, какая программа из семьи может стоять "
+    "за твоим отношением к деньгам.\n\n"
+    "А чтобы увидеть, что стоит именно за твоей ситуацией, есть личная диагностика. "
+    "Пока идёт акция, она бесплатная."
+)
+
+DAY3_MONEY_SOFT = (
+    "Если хочется навести порядок в деньгах на практике, есть курс по финансовой "
+    "грамотности «Денежный взлёт» — 4 990 ₸. В нём уроки с заданиями про долги, доходы и "
+    "расходы, идеи роста дохода и медитации. Проходишь сама, в своём темпе.\n\n"
+    "А если хочется увидеть, что стоит именно за твоей ситуацией, есть бесплатная "
+    "диагностика. Или просто загляни в Пространство трансформации 👇"
+)
 
 
 async def send_day_message(bot, chat_id: int, day: int):
-    money_btn = [InlineKeyboardButton("💰 Денежный взлёт — 4 990 ₸", callback_data="path_money")]
     try:
-        # Анонс: как слушать и что даёт практика (отдельным сообщением перед аудио)
-        intro = DAY_INTRO.get(day)
-        if intro:
-            try:
-                await bot.send_message(chat_id=chat_id, text=intro)
-                await asyncio.sleep(1)
-            except Exception as e:
-                logger.error(f"❌ Не отправился анонс дня {day} для {chat_id}: {e}")
-
         if day == 1:
+            await bot.send_message(chat_id=chat_id, text=DAY_INTRO[1])
+            await asyncio.sleep(1)
             await bot.send_audio(
                 chat_id=chat_id,
                 audio=AUDIO_DAY1,
@@ -500,49 +559,45 @@ async def send_day_message(bot, chat_id: int, day: int):
                 ])
             )
         elif day == 2:
-            await bot.send_audio(
+            await bot.send_message(
                 chat_id=chat_id,
-                audio=AUDIO_DAY2,
-                caption=CAPTION_DAY2,
+                text=DAY2_CHECKIN,
                 reply_markup=InlineKeyboardMarkup([
-                    money_btn,
+                    [InlineKeyboardButton("🔎 Пройти тест про деньги", callback_data="ml_start")],
+                    [InlineKeyboardButton("💰 Денежный взлёт — 4 990 ₸", callback_data="path_money")],
+                    [InlineKeyboardButton("🔎 Записаться на диагностику", callback_data="diag_signup")],
                     [InlineKeyboardButton("🌀 Пространство в Telegram", url=LINK_GROUP)],
-                    [InlineKeyboardButton("🌀 Пространство в WhatsApp", url=LINK_GROUP_WA)],
-                    [InlineKeyboardButton("✨ Квантовый взлёт", url=LINK_KVANT)],
                 ])
             )
         elif day == 3:
+            await bot.send_message(chat_id=chat_id, text=DAY_INTRO[3])
+            await asyncio.sleep(1)
             await bot.send_audio(
                 chat_id=chat_id,
                 audio=AUDIO_DAY3,
                 caption=CAPTION_DAY3,
                 reply_markup=InlineKeyboardMarkup([
-                    money_btn,
-                    [InlineKeyboardButton("✨ Квантовый взлёт", url=LINK_KVANT)],
+                    [InlineKeyboardButton("🌀 Пространство в Telegram", url=LINK_GROUP)],
                 ])
             )
-        elif day == 4:
-            kb4 = InlineKeyboardMarkup([
-                [InlineKeyboardButton("💫 Написать Венере лично", url=LINK_VENERA)],
-            ])
-            try:
-                await bot.send_audio(
-                    chat_id=chat_id,
-                    audio=AUDIO_DAY4,
-                    caption=CAPTION_DAY4,
-                    reply_markup=kb4
-                )
-            except Exception:
-                # если file_id сохранён как документ — отправляем как документ
-                await bot.send_document(
-                    chat_id=chat_id,
-                    document=AUDIO_DAY4,
-                    caption=CAPTION_DAY4,
-                    reply_markup=kb4
-                )
-        logger.info(f"✅ Отправлена практика дня {day} → {chat_id}")
+            await asyncio.sleep(2)
+            await bot.send_message(
+                chat_id=chat_id,
+                text=DAY3_MONEY_SOFT,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("💰 Денежный взлёт — 4 990 ₸", callback_data="path_money")],
+                    [InlineKeyboardButton("🔎 Записаться на диагностику", callback_data="diag_signup")],
+                    [InlineKeyboardButton("🌀 Пространство в Telegram", url=LINK_GROUP)],
+                ])
+            )
+        else:
+            # дни 4 и далее из старой серии больше не отправляются автоматически
+            # (практики «Отец» и «Судьба» сохранены как бонус для Пространства)
+            logger.info(f"Пропущено старое сообщение дня {day} для {chat_id}")
+            return
+        logger.info(f"✅ Отправлено сообщение {day} → {chat_id}")
     except Exception as e:
-        logger.error(f"❌ Ошибка отправки дня {day} для {chat_id}: {e}")
+        logger.error(f"❌ Ошибка отправки {day} для {chat_id}: {e}")
 
 
 # ✅ Логирование file_id любого аудио/файла отправленного боту
@@ -620,8 +675,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "✨ Привет! Раз ты здесь — что-то из видео зацепило.\n\n"
             "Пройди короткий тест — узнаешь, где сейчас твой главный блок: в деньгах, "
-            "отношениях, успехе или здоровье. И что с этим делать.\n\n"
-            "2 минуты. Начнём? 👇",
+            "в отношениях или в жизни в целом. И откуда он идёт.\n\n"
+            "Около 3 минут. Начнём? 👇",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("Начать", callback_data="reels_start")
             ]])
@@ -631,26 +686,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def send_first_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["answers"] = []
-    q = QUESTIONS[0]
-    await update.message.reply_text(
-        "Привет! 👋\n\nЯ помогу тебе узнать твой денежный тип и понять, что мешает деньгам приходить.\n\n"
-        "Ответь честно на 6 вопросов — без правильных или неправильных ответов.\n\n" + question_text(q),
-        reply_markup=make_keyboard(q["options"])
-    )
-    return Q1
+    await ut_begin_message(update, context)
+    return ConversationHandler.END
 
 
 async def greeting_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    context.user_data["answers"] = []
-    q = QUESTIONS[0]
-    await query.edit_message_text(
-        "Ответь честно на 6 вопросов — без правильных или неправильных ответов.\n\n" + question_text(q),
-        reply_markup=make_keyboard(q["options"])
-    )
-    return Q1
+    await ut_begin_callback(query, context)
+    return ConversationHandler.END
 
 
 async def handle_q(update: Update, context: ContextTypes.DEFAULT_TYPE, next_state: int, q_index: int):
@@ -714,8 +758,7 @@ async def show_result(query, context: ContextTypes.DEFAULT_TYPE):
         text=(
             f"✅ Твой шаг на сегодня\n\n{result['step']}\n\n"
             "━━━━━━━━━━━━━━━━━━\n"
-            "🎧 Через пару минут я пришлю тебе первую аудио-практику — не уходи далеко!\n"
-            "Впереди 4 дня практик, которые помогут мягко сдвинуть поле."
+            "🎧 Через 10 минут я пришлю тебе первую аудио-практику — не уходи далеко!"
         )
     )
 
@@ -749,10 +792,10 @@ async def path_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = query.message.chat_id
     if query.data == "path_money":
         text = TEXT_MONEY
-        kb = InlineKeyboardMarkup([[InlineKeyboardButton("💰 Хочу Денежный взлёт", url=LINK_VENERA)]])
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("💰 Хочу Денежный взлёт", callback_data="want_money")]])
     elif query.data == "path_razbor":
         text = TEXT_RAZBOR
-        kb = InlineKeyboardMarkup([[InlineKeyboardButton("🎯 Записаться на разбор", url=LINK_VENERA)]])
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("🎯 Записаться на разбор", callback_data="want_razbor")]])
     else:
         text = TEXT_SPACE
         kb = InlineKeyboardMarkup([
@@ -1164,6 +1207,413 @@ def ml_register(app):
     app.add_handler(CallbackQueryHandler(ml_on_answer, pattern="^ml[0-9]+_[АБВГ]$"))
 
 
+
+# ======================================================================
+# ЕДИНЫЙ ТЕСТ «СКРЫТАЯ ПРОГРАММА» — главный вход из рилсов и из /start
+# 8 коротких вопросов про деньги и отношения, пятый вариант «Ничего не подходит».
+# Результат: скрытая программа (название, как видно в деньгах и в отношениях,
+# откуда идёт, чего стоит), шаг-наблюдение и приглашение на диагностику.
+# Выхода из программы тест не даёт — это работа личной диагностики и разбора.
+# Тексты программ лежат выше (ML_PROGRAMS), здесь — вопросы и дополнения.
+# ======================================================================
+UT_LETTERS = ["А", "Б", "В", "Г", "Д"]
+
+UT_INTRO = (
+    "Привет! 👋\n\n"
+    "Я помогу тебе увидеть, где сейчас твой главный блок — в деньгах, в отношениях "
+    "или в жизни в целом — и откуда он идёт.\n\n"
+    "8 коротких вопросов, около 3 минут. Отвечай не думая. "
+    "Если ни один вариант не подходит — выбирай Д и можешь написать своими словами."
+)
+
+UT_QUESTIONS = [
+    (
+        "Когда я думаю, что мою жизнь можно сделать намного лучше — в деньгах, в отношениях, во всём, — что откликается первым?",
+        [
+            ("«У нас в семье так не было»", 4),
+            ("Неловко: вдруг рядом кому-то станет хуже", 6),
+            ("Страх выделиться: что скажут люди", 11),
+            ("Лёгкой жизни не бывает, придётся пахать", 8),
+        ],
+    ),
+    (
+        "Как я обычно живу и работаю?",
+        [
+            ("До изнеможения, а отдыхать совестно", 8),
+            ("Тяну ответственность за всех вокруг", 3),
+            ("Не показываю результаты: лучше тихо", 11),
+            ("Как принято в семье, планку выше не ставлю", 4),
+        ],
+    ),
+    (
+        "Что отзывается, когда я думаю стать успешнее партнёра или родителей?",
+        [
+            ("Неудобно перед мамой или папой", 9),
+            ("Страх: или семья, или успех", 10),
+            ("Вина: у близких так не получилось", 6),
+            ("Иду тем же путём, что мама", 1),
+        ],
+    ),
+    (
+        "Какая мысль про деньги и достаток мне знакома?",
+        [
+            ("«Богатство — не для праведных»", 12),
+            ("«Мне хватит малого»", 7),
+            ("«Всё достаётся только тяжёлым трудом»", 8),
+            ("«От больших денег одни беды»", 5),
+        ],
+    ),
+    (
+        "Какой я была в детстве, в семье?",
+        [
+            ("Берегла и поддерживала родителей", 2),
+            ("Взрослой не по годам", 3),
+            ("Очень похожей на маму или папу", 1),
+            ("В семье есть тот, о ком молчат", 5),
+        ],
+    ),
+    (
+        "Что я чувствую, когда получаю что-то большое: деньги, успех, подарок?",
+        [
+            ("Вину: за что мне столько", 6),
+            ("Хочется быстрее потратить или раздать", 7),
+            ("Хочется скрыть, чтобы не позавидовали", 11),
+            ("Чувство долга: нужно поделиться", 3),
+        ],
+    ),
+    (
+        "Что я почувствую, если стану жить намного лучше, чем жили мои родители?",
+        [
+            ("Стыд, будто предаю их", 9),
+            ("Страх, что накажут или что это неправильно", 12),
+            ("Тревогу, что отдалюсь от близких", 10),
+            ("Беспокойство за них, понесу их тяжесть", 2),
+        ],
+    ),
+    (
+        "Какой сценарий повторяется в моей жизни?",
+        [
+            ("Как у мамы или бабушки", 1),
+            ("Рост обрывается за шаг до результата", 5),
+            ("Чужая тяжесть ощущается как своя", 2),
+            ("Растут деньги — рушатся отношения, и наоборот", 10),
+        ],
+    ),
+]
+
+# как программа проявляется в отношениях
+UT_REL = {
+    1: "В отношениях это может звучать как знакомый сценарий: те же роли, те же конфликты, будто ты уже видела это раньше.",
+    2: "В отношениях ты становишься опорой для всех и редко позволяешь поддержать себя.",
+    3: "В отношениях ты уступаешь, терпишь и жертвуешь своим, лишь бы другому было хорошо.",
+    4: "В отношениях ты соглашаешься на «так же, как у всех» и не позволяешь себе большего счастья.",
+    5: "В отношениях это может звучать как «когда всё слишком хорошо, жди беды»: ты сама обрываешь близость на подходе к счастью.",
+    6: "В отношениях ты не позволяешь себе быть счастливее, чем близкие.",
+    7: "В отношениях ты довольствуешься малым и не просишь большего.",
+    8: "В отношениях ты привыкла «заслуживать» любовь трудом и заботой, а когда всё идёт легко, настораживаешься.",
+    9: "В отношениях ты можешь не позволять себе стать счастливее или успешнее, чем были твои родители.",
+    10: "В отношениях пугает, что твой рост разрушит близость, и ты выбираешь между важным.",
+    11: "В отношениях ты прячешь свои желания и не говоришь о них вслух.",
+    12: "В отношениях ты можешь стыдиться желания радости и роскоши, будто хотеть большего неправильно.",
+}
+
+# маленький шаг-наблюдение (не способ снять программу)
+UT_STEPS = {
+    1: "Сегодня заметь одну ситуацию с деньгами или близкими, в которой ты поступаешь «как у мамы» или «как у бабушки». Просто заметь, без оценки.",
+    2: "Заметь сегодня, в какой момент ты берёшь на себя чужое: чужую заботу, чужую просьбу, чужой долг. Ничего не меняй, только отметь.",
+    3: "Сегодня заметь, где ты уступаешь или терпишь ради другого. Спроси себя: чего хочу я?",
+    4: "Заметь сегодня фразу «это не для нас» или «выше не положено», если она прозвучит внутри или снаружи.",
+    5: "Заметь сегодня момент, когда рядом с хорошим развитием появляется тревога «сейчас что-то случится».",
+    6: "Заметь, где ты занижаешь цену, отказываешься от подарка или извиняешься за свой успех.",
+    7: "Сегодня заметь, на что уходят твои деньги в первые часы после того, как ты их получила.",
+    8: "Заметь, в какой момент тебе становится тревожно или совестно, когда всё идёт легко.",
+    9: "Заметь сегодня, в чём ты остаёшься на уровне родителей, хотя могла бы больше. Только наблюдай.",
+    10: "Заметь сегодня, когда появляется мысль «или так, или так» про деньги и отношения.",
+    11: "Заметь, о чём ты сегодня промолчала, чтобы не выделяться.",
+    12: "Заметь, когда в тебе звучит «хорошие люди живут скромно». Просто отметь, откуда этот голос.",
+}
+
+# твоя сила в этой программе
+UT_STRENGTH = {
+    1: "Глубокая связь с родом и умение быть верной своим.",
+    2: "Чуткость и способность быть опорой для других.",
+    3: "Огромная способность любить и заботиться.",
+    4: "Умение ценить стабильность и опираться на проверенное.",
+    5: "Осторожность и острое чувство риска, которое когда-то защищало.",
+    6: "Справедливость и чуткость к другим людям.",
+    7: "Умение обходиться малым и не цепляться за вещи.",
+    8: "Трудолюбие, выносливость и умение доводить дело до конца.",
+    9: "Глубокая любовь и уважение к родителям.",
+    10: "Ценность близости: для тебя отношения по-настоящему важны.",
+    11: "Тактичность и умение не создавать лишних конфликтов.",
+    12: "Совестливость и честность перед собой.",
+}
+
+# как эта программа звучит внутри
+UT_VOICE = {
+    1: "«Я, наверное, как мама», «Так, видимо, и должно быть».",
+    2: "«Я не могу бросить, им же тяжело».",
+    3: "«Пусть лучше мне, чем им».",
+    4: "«Нам хватает и так», «Зачем мне больше».",
+    5: "«Когда слишком хорошо, обязательно что-то случится».",
+    6: "«Мне повезло больше, чем другим, это неправильно».",
+    7: "«Мне много не нужно».",
+    8: "«Лёгкое не может быть настоящим».",
+    9: "«Я не вправе быть выше них».",
+    10: "«Если выберу своё, потеряю близких».",
+    11: "«Лучше не привлекать внимание».",
+    12: "«Порядочный человек не стремится к богатству».",
+}
+
+# если человек не выбрал ни одного ответа (везде «Другое») — всё равно даём реальный результат
+UT_GENERAL = {
+    "title": "Несколько программ сразу",
+    "strength": "Ты не соглашаешься на готовые ответы и внимательно относишься к себе.",
+    "how": (
+        "Когда ни один из вариантов не откликается, это часто значит, что в твоей жизни "
+        "переплетается сразу несколько причин, а не одна. Деньги могут упираться и в усталость, "
+        "и в страх выделиться, и в чужие ожидания одновременно."
+    ),
+    "rel": (
+        "В отношениях это может выглядеть так: ты то отдаёшь слишком много, то закрываешься, "
+        "и сама не всегда понимаешь, что именно происходит."
+    ),
+    "voice": "«У меня не так, как у всех» или «Я не понимаю, что именно мне мешает».",
+    "origin": (
+        "Когда в роду и семье много разных историй, программы накладываются друг на друга "
+        "и их трудно увидеть изнутри."
+    ),
+    "cost": "Ты тратишь много сил, не видя, на что именно они уходят.",
+    "step": "Сегодня запиши три ситуации, где ты чувствуешь, что упираешься в стену, и что ты в этот момент чувствуешь в теле.",
+}
+
+UT_NO_MATCH = (
+    "✨ Твой результат\n\n"
+    "Похоже, ни один вариант не откликнулся, и это нормально: у каждого свой путь, "
+    "и общие вопросы не всегда попадают в него.\n\n"
+    "Именно поэтому самое точное — личная диагностика: она показывает твою ситуацию, "
+    "а не общую картину."
+)
+
+UT_CTA = (
+    "🔎 А что именно блокирует у тебя — деньги, отношения или что-то другое?\n\n"
+    "У каждого это своё, и увидеть это можно только в личной диагностике.\n\n"
+    "Пока идёт акция, диагностика бесплатная (обычно 10 000 ₸). Места ограничены."
+)
+
+
+def ut_question_text(i: int) -> str:
+    text, options = UT_QUESTIONS[i]
+    lines = [f"{UT_LETTERS[k]}) {label}" for k, (label, _) in enumerate(options)]
+    lines.append("Д) Другое — можно написать своими словами")
+    return f"Вопрос {i + 1} из {len(UT_QUESTIONS)}\n\n{text}\n\n" + "\n\n".join(lines) + "\n\n👇 Выбери букву"
+
+
+def ut_keyboard(i: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton(letter, callback_data=f"ut{i}_{letter}") for letter in UT_LETTERS
+    ]])
+
+
+def ut_reset(context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["ut"] = {"i": 0, "answers": []}
+
+
+async def ut_begin_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    ut_reset(context)
+    await update.message.reply_text(
+        UT_INTRO + "\n\n━━━━━━━━━━━━━━━━━━\n\n" + ut_question_text(0),
+        reply_markup=ut_keyboard(0)
+    )
+
+
+async def ut_begin_callback(query, context: ContextTypes.DEFAULT_TYPE):
+    ut_reset(context)
+    await query.edit_message_text(
+        "Ответь на 8 коротких вопросов, около 3 минут. Отвечай не думая. "
+        "Если ни один вариант не подходит — выбирай Д и можешь написать своими словами.\n\n"
+        "━━━━━━━━━━━━━━━━━━\n\n" + ut_question_text(0),
+        reply_markup=ut_keyboard(0)
+    )
+
+
+async def ut_finish(query, context: ContextTypes.DEFAULT_TYPE):
+    st = context.user_data.get("ut", {})
+    answers = st.get("answers", [])
+    chat_id = query.message.chat_id
+    user = query.from_user
+
+    # практики планируем сразу, чтобы они не потерялись
+    schedule_user(chat_id)
+
+    # всегда даём реальный результат
+    if answers:
+        ranking = ml_rank_programs(answers)
+        main_id, main_score = ranking[0]
+        context.user_data["result_program"] = main_id
+        p = ML_PROGRAMS[main_id]
+        data = {
+            "title": p["title"], "strength": UT_STRENGTH[main_id], "how": p["how"], "rel": UT_REL[main_id],
+            "voice": UT_VOICE[main_id], "origin": p["origin"], "cost": p["cost"], "step": UT_STEPS[main_id],
+        }
+        second = None
+        if len(ranking) > 1:
+            second_id, second_score = ranking[1]
+            if main_score == second_score or (main_score - second_score == 1 and second_score >= 2):
+                second = ML_PROGRAMS[second_id]["title"]
+    else:
+        context.user_data["result_program"] = None
+        data = UT_GENERAL
+        second = None
+
+    head = "✨ Твой результат\n\n"
+    if 0 < len(answers) < 3:
+        head += "Ты ответила не на все вопросы, поэтому это предварительный результат.\n\n"
+    await query.edit_message_text(
+        head + f"Скрытая программа: «{data['title']}»\n\n"
+        f"💫 Твоя сила\n{data['strength']}\n\n"
+        f"🔒 В деньгах\n{data['how']}\n\n"
+        f"💞 В отношениях\n{data['rel']}"
+    )
+
+    part2 = (
+        f"🗣 Как это звучит внутри\n{data['voice']}\n\n"
+        f"🌱 Откуда это часто идёт\n{data['origin']}\n\n"
+        f"🪙 Чего это стоит\n{data['cost']}"
+    )
+    if second:
+        part2 += f"\n\nРядом звучит и программа «{second}»."
+    part2 += "\n\nЭто не приговор, а программа. Когда она названа, её уже видно, и это первый шаг."
+    await asyncio.sleep(2)
+    await context.bot.send_message(chat_id=chat_id, text=part2)
+
+    await asyncio.sleep(2)
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            f"✅ Твой шаг на сегодня — наблюдение\n\n{data['step']}\n\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            "🎧 Через 10 минут я пришлю тебе первую аудио-практику — не уходи далеко!"
+        )
+    )
+
+    await asyncio.sleep(2)
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=UT_CTA,
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("🔎 Записаться на диагностику", callback_data="diag_signup")
+        ]])
+    )
+
+    notes = context.user_data.pop("ut_notes", [])
+    await notify_admin(
+        context.bot,
+        "✅ Прошла тест\n" + who(user) + f"\nПрограмма: «{data['title']}»"
+        + (" (предварительно, мало ответов)" if 0 < len(answers) < 3 else "")
+        + f"\nОтветов по программам: {len(answers)} из {len(UT_QUESTIONS)}"
+        + (f"\nСвоими словами: {' | '.join(notes)[:600]}" if notes else "")
+    )
+    context.user_data.pop("ut", None)
+
+
+async def ut_on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data  # например «ut3_Б»
+    i = int(data[2:data.index("_")])
+    letter = data[data.index("_") + 1:]
+
+    st = context.user_data.get("ut")
+    if not st or st["i"] != i:
+        return  # старая кнопка или тест уже завершён
+    if letter != "Д":
+        program_id = UT_QUESTIONS[i][1][UT_LETTERS.index(letter)][1]
+        st["answers"].append(program_id)
+    elif not st.get("hint_shown"):
+        st["hint_shown"] = True
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text="Если хочешь, напиши своими словами, как у тебя на самом деле. Я передам это Венере 💫 Тест идёт дальше."
+        )
+    st["i"] = i + 1
+
+    if st["i"] < len(UT_QUESTIONS):
+        await query.edit_message_text(ut_question_text(st["i"]), reply_markup=ut_keyboard(st["i"]))
+    else:
+        await ut_finish(query, context)
+
+
+async def diag_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await context.bot.send_message(
+        chat_id=query.message.chat_id,
+        text=(
+            "Отлично! 💫\n\n"
+            "Напиши Венере слово «диагностика» и выбери одну тему: деньги, отношения, "
+            "состояние или реализация. На одну диагностику берётся один запрос, "
+            "и она подтвердит удобное время."
+        ),
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("💬 Написать Венере", url=LINK_VENERA)
+        ]])
+    )
+    await notify_admin(context.bot, "🔔 Хочет бесплатную диагностику\n" + who(query.from_user))
+
+
+async def want_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if query.data == "want_money":
+        what, label = "Денежный взлёт", "Денежный взлёт"
+        text = "Отлично! 💫 Напиши Венере — она подскажет, как оплатить, и откроет курс."
+    else:
+        what, label = "индивидуальный разбор", "разбор"
+        text = "Отлично! 💫 Напиши Венере — она подберёт время и уточнит твой запрос."
+    await context.bot.send_message(
+        chat_id=query.message.chat_id,
+        text=text,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💬 Написать Венере", url=LINK_VENERA)]])
+    )
+    await notify_admin(context.bot, f"🔔 Хочет: {what}\n" + who(query.from_user))
+
+
+async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Венера пишет боту /admin один раз — бот запоминает, куда присылать заявки"""
+    user = update.effective_user
+    if user and user.username and user.username.lower() == "vetatina":
+        set_admin_chat(update.effective_chat.id)
+        await update.message.reply_text(
+            "Готово ✅ Теперь я буду присылать сюда сообщения: кто прошёл тест, "
+            "кто хочет диагностику, Денежный взлёт или разбор."
+        )
+
+
+async def ut_free_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Пока идёт тест, всё, что человек пишет своими словами, сохраняется и уходит Венере"""
+    if not update.message or not update.message.text:
+        return
+    if not context.user_data.get("ut"):
+        return
+    text = update.message.text.strip()
+    context.user_data.setdefault("ut_notes", []).append(text)
+    await update.message.reply_text("Записала 🙂 Продолжай — выбери букву.")
+    await notify_admin(
+        context.bot,
+        "💬 Написала своими словами во время теста\n" + who(update.effective_user) + f"\n«{text[:500]}»"
+    )
+
+
+def ut_register(app):
+    app.add_handler(CallbackQueryHandler(ut_on_answer, pattern="^ut[0-9]+_[АБВГД]$"))
+    app.add_handler(CallbackQueryHandler(diag_signup, pattern="^diag_signup$"))
+    app.add_handler(CallbackQueryHandler(want_callback, pattern="^want_(money|razbor)$"))
+    app.add_handler(CommandHandler("admin", admin_cmd))
+    # отдельная группа, чтобы не мешать остальным обработчикам текста
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ut_free_text), group=5)
+
+
 def main():
     init_db()
     app = Application.builder().token(TELEGRAM_TOKEN).build()
@@ -1188,6 +1638,7 @@ def main():
 
     # Второй тест «Скрытая денежная программа» (блок выше, перед main)
     ml_register(app)
+    ut_register(app)
 
     # ✅ Обработчик аудио — показывает file_id
     app.add_handler(MessageHandler(filters.AUDIO | filters.VOICE | filters.Document.ALL, handle_audio))
