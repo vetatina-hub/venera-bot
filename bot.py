@@ -31,6 +31,7 @@ LINK_GROUP_WA = "https://chat.whatsapp.com/JdXSf1uFlpwJZwUWBv8GbR"
 LINK_KVANT = "https://vetatina-hub.github.io/kvantoviy-vzlet/"
 LINK_ALKHIM = "https://vetatina-hub.github.io/alkhimiya-deneg/"
 LINK_VENERA = "https://t.me/vetatina"
+LINK_KASPI_MONEY = "https://pay.kaspi.kz/pay/pyquwzeb"  # оплата Денежного взлёта, 4 990 ₸
 
 # ===== ТЕКСТЫ ТРЁХ ПУТЕЙ ПОСЛЕ РЕЗУЛЬТАТА (можно править прямо здесь) =====
 PATHS_TEXT = (
@@ -65,7 +66,7 @@ TEXT_MONEY = (
     "• в деньгах хаос, и хочется навести порядок;\n"
     "• есть долги или кредиты, и хочется жить без них;\n"
     "• хочешь понимать свои реальные доходы и расходы.\n\n"
-    "Чтобы получить доступ, напиши Венере — она подскажет, как оплатить, и откроет курс 👇"
+    "Оплатить можно по кнопке ниже. После оплаты напиши Венере — она откроет доступ к курсу 👇"
 )
 
 TEXT_RAZBOR = (
@@ -1624,14 +1625,24 @@ async def want_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_event(query.message.chat_id, query.data)
     if query.data == "want_money":
         what, label = "Денежный взлёт", "Денежный взлёт"
-        text = "Отлично! 💫 Напиши Венере — она подскажет, как оплатить, и откроет курс."
+        text = (
+            "Отлично! 💫\n\n"
+            "Стоимость Денежного взлёта — 4 990 ₸.\n\n"
+            "Нажми кнопку «Оплатить», в Kaspi введи сумму 4 990 и подтверди оплату. "
+            "После оплаты напиши Венере, и она откроет тебе доступ к курсу."
+        )
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("💳 Оплатить 4 990 ₸ (Kaspi)", url=LINK_KASPI_MONEY)],
+            [InlineKeyboardButton("💬 Написать Венере", url=LINK_VENERA)],
+        ])
     else:
         what, label = "индивидуальный разбор", "разбор"
         text = "Отлично! 💫 Напиши Венере — она подберёт время и уточнит твой запрос."
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("💬 Написать Венере", url=LINK_VENERA)]])
     await context.bot.send_message(
         chat_id=query.message.chat_id,
         text=text,
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💬 Написать Венере", url=LINK_VENERA)]])
+        reply_markup=kb
     )
     await notify_admin(context.bot, f"🔔 Хочет: {what}\n" + who(query.from_user))
 
