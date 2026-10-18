@@ -453,6 +453,21 @@ def init_db():
                     value TEXT
                 )
             """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS events (
+                    id SERIAL PRIMARY KEY,
+                    chat_id BIGINT NOT NULL,
+                    kind TEXT NOT NULL,
+                    source TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS user_sources (
+                    chat_id BIGINT PRIMARY KEY,
+                    source TEXT
+                )
+            """)
             conn.commit()
     logger.info("DB инициализирована")
 
@@ -479,6 +494,38 @@ def set_admin_chat(chat_id: int):
                 (str(chat_id),)
             )
             conn.commit()
+
+
+def set_source(chat_id: int, source: str):
+    """Запоминает, откуда пришёл человек: reels, ads, dengi или organic"""
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO user_sources (chat_id, source) VALUES (%s, %s) "
+                    "ON CONFLICT (chat_id) DO UPDATE SET source = EXCLUDED.source",
+                    (chat_id, source)
+                )
+                conn.commit()
+    except Exception as e:
+        logger.error(f"set_source: {e}")
+
+
+def log_event(chat_id: int, kind: str):
+    """Записывает событие для статистики. Ошибки не мешают работе бота."""
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT source FROM user_sources WHERE chat_id = %s", (chat_id,))
+                row = cur.fetchone()
+                source = row["source"] if row else "organic"
+                cur.execute(
+                    "INSERT INTO events (chat_id, kind, source) VALUES (%s, %s, %s)",
+                    (chat_id, kind, source)
+                )
+                conn.commit()
+    except Exception as e:
+        logger.error(f"log_event: {e}")
 
 
 def who(user) -> str:
@@ -668,10 +715,14 @@ def question_text(q):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
+    chat_id = update.effective_chat.id
+    src = args[0] if args and args[0] in ("reels", "ads", "dengi") else "organic"
+    set_source(chat_id, src)
+    log_event(chat_id, "start")
     if args and args[0] == "dengi":
         await ml_begin_from_message(update, context)
         return ConversationHandler.END
-    if args and args[0] == "reels":
+    if args and args[0] in ("reels", "ads"):
         await update.message.reply_text(
             "✨ Привет! Раз ты здесь — что-то из видео зацепило.\n\n"
             "Пройди короткий тест — узнаешь, где сейчас твой главный блок: в деньгах, "
@@ -1150,6 +1201,7 @@ async def ml_finish(query, context: ContextTypes.DEFAULT_TYPE):
     answers = st.get("answers", [])
     first_result = context.user_data.get("first_result")
     chat_id = query.message.chat_id
+    log_event(chat_id, "test2_done")
 
     await query.edit_message_text(ml_build_result_text(answers, first_result))
     await asyncio.sleep(2)
@@ -1421,6 +1473,7 @@ def ut_reset(context: ContextTypes.DEFAULT_TYPE):
 
 async def ut_begin_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ut_reset(context)
+    log_event(update.effective_chat.id, "test_start")
     await update.message.reply_text(
         UT_INTRO + "\n\n━━━━━━━━━━━━━━━━━━\n\n" + ut_question_text(0),
         reply_markup=ut_keyboard(0)
@@ -1429,6 +1482,7 @@ async def ut_begin_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def ut_begin_callback(query, context: ContextTypes.DEFAULT_TYPE):
     ut_reset(context)
+    log_event(query.message.chat_id, "test_start")
     await query.edit_message_text(
         "Ответь на 8 коротких вопросов, около 3 минут. Отвечай не думая. "
         "Если ни один вариант не подходит — выбирай Д и можешь написать своими словами.\n\n"
@@ -1445,6 +1499,7 @@ async def ut_finish(query, context: ContextTypes.DEFAULT_TYPE):
 
     # практики планируем сразу, чтобы они не потерялись
     schedule_user(chat_id)
+    log_event(chat_id, "test_done")
 
     # всегда даём реальный результат
     if answers:
@@ -1547,6 +1602,7 @@ async def ut_on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def diag_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    log_event(query.message.chat_id, "diag")
     await context.bot.send_message(
         chat_id=query.message.chat_id,
         text=(
@@ -1565,6 +1621,7 @@ async def diag_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def want_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    log_event(query.message.chat_id, query.data)
     if query.data == "want_money":
         what, label = "Денежный взлёт", "Денежный взлёт"
         text = "Отлично! 💫 Напиши Венере — она подскажет, как оплатить, и откроет курс."
@@ -1590,6 +1647,68 @@ async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+def _is_admin(update: Update) -> bool:
+    user = update.effective_user
+    return bool(user and user.username and user.username.lower() == "vetatina")
+
+
+async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Сводка для Венеры: сколько людей и на каких шагах. Только для @vetatina."""
+    if not _is_admin(update):
+        return
+    astana = timezone(timedelta(hours=5))
+    now = datetime.now(astana)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    periods = [
+        ("Сегодня", today_start),
+        ("7 дней", now - timedelta(days=7)),
+        ("Всего", datetime(2000, 1, 1, tzinfo=timezone.utc)),
+    ]
+    rows = [
+        ("start", "Открыли бота"),
+        ("test_start", "Начали тест"),
+        ("test_done", "Прошли тест"),
+        ("test2_done", "Прошли второй тест"),
+        ("diag", "Хотят диагностику"),
+        ("want_money", "Хотят Денежный взлёт"),
+        ("want_razbor", "Хотят разбор"),
+    ]
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                counts = {}
+                for pname, since in periods:
+                    cur.execute(
+                        "SELECT kind, COUNT(DISTINCT chat_id) AS n FROM events "
+                        "WHERE created_at >= %s GROUP BY kind", (since,)
+                    )
+                    counts[pname] = {r["kind"]: r["n"] for r in cur.fetchall()}
+                cur.execute(
+                    "SELECT source, kind, COUNT(DISTINCT chat_id) AS n FROM events "
+                    "WHERE kind IN ('start','test_done','diag') GROUP BY source, kind"
+                )
+                by_source = {}
+                for r in cur.fetchall():
+                    by_source.setdefault(r["source"] or "organic", {})[r["kind"]] = r["n"]
+    except Exception as e:
+        logger.error(f"stats: {e}")
+        await update.message.reply_text("Не получилось собрать статистику. Посмотри логи в Railway.")
+        return
+
+    lines = ["📊 Статистика бота (считаются люди, не нажатия)\n"]
+    header = "                         " + "  ".join(p for p, _ in periods)
+    for kind, label in rows:
+        vals = [str(counts[p].get(kind, 0)) for p, _ in periods]
+        lines.append(f"{label}: " + " / ".join(vals))
+    lines.append("\n(Сегодня / 7 дней / Всего)")
+    names = {"reels": "Рилсы", "ads": "Реклама", "dengi": "Тест про деньги", "organic": "Без ссылки"}
+    if by_source:
+        lines.append("\n🔗 Откуда пришли (всего): открыли / прошли тест / диагностика")
+        for src, d in sorted(by_source.items(), key=lambda x: -x[1].get("start", 0)):
+            lines.append(f"{names.get(src, src)}: {d.get('start', 0)} / {d.get('test_done', 0)} / {d.get('diag', 0)}")
+    await update.message.reply_text("\n".join(lines))
+
+
 async def ut_free_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Пока идёт тест, всё, что человек пишет своими словами, сохраняется и уходит Венере"""
     if not update.message or not update.message.text:
@@ -1610,6 +1729,7 @@ def ut_register(app):
     app.add_handler(CallbackQueryHandler(diag_signup, pattern="^diag_signup$"))
     app.add_handler(CallbackQueryHandler(want_callback, pattern="^want_(money|razbor)$"))
     app.add_handler(CommandHandler("admin", admin_cmd))
+    app.add_handler(CommandHandler("stats", stats_cmd))
     # отдельная группа, чтобы не мешать остальным обработчикам текста
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ut_free_text), group=5)
 
