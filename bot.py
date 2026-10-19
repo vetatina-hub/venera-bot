@@ -1451,6 +1451,12 @@ UT_NO_MATCH = (
 UT_CTA = (
     "🔎 А что именно блокирует у тебя — деньги, отношения или что-то другое?\n\n"
     "У каждого это своё, и увидеть это можно только в личной диагностике.\n\n"
+    "Как это проходит:\n"
+    "• около 30 минут, онлайн по видео;\n"
+    "• диагностика проходит с фигурами: по твоей теме в поле показывается, кто и что стоит за "
+    "истинной причиной. Это может оказаться любой человек из твоей жизни или твоего рода;\n"
+    "• заранее рассказывать о своей ситуации не нужно;\n"
+    "• на одну диагностику берётся один запрос: деньги, отношения, состояние или реализация.\n\n"
     "Пока идёт акция, диагностика бесплатная (обычно 10 000 ₸). Места ограничены."
 )
 
@@ -1600,6 +1606,14 @@ async def ut_on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await ut_finish(query, context)
 
 
+DIAG_TOPICS = {
+    "money": ("💰 Деньги", "деньги"),
+    "rel": ("💞 Отношения", "отношения"),
+    "state": ("🌿 Состояние", "состояние"),
+    "real": ("✨ Реализация", "реализация"),
+}
+
+
 async def diag_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1608,15 +1622,39 @@ async def diag_signup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id=query.message.chat_id,
         text=(
             "Отлично! 💫\n\n"
-            "Напиши Венере слово «диагностика» и выбери одну тему: деньги, отношения, "
-            "состояние или реализация. На одну диагностику берётся один запрос, "
-            "и она подтвердит удобное время."
+            "На одну диагностику берётся один запрос. "
+            "Выбери тему, с которой хочется начать 👇"
+        ),
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton(DIAG_TOPICS["money"][0], callback_data="diag_topic_money"),
+             InlineKeyboardButton(DIAG_TOPICS["rel"][0], callback_data="diag_topic_rel")],
+            [InlineKeyboardButton(DIAG_TOPICS["state"][0], callback_data="diag_topic_state"),
+             InlineKeyboardButton(DIAG_TOPICS["real"][0], callback_data="diag_topic_real")],
+        ])
+    )
+    await notify_admin(context.bot, "🔔 Хочет бесплатную диагностику (выбирает тему)\n" + who(query.from_user))
+
+
+async def diag_topic(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    key = query.data.replace("diag_topic_", "")
+    if key not in DIAG_TOPICS:
+        return
+    topic = DIAG_TOPICS[key][1]
+    log_event(query.message.chat_id, "diag_topic_" + key)
+    await context.bot.send_message(
+        chat_id=query.message.chat_id,
+        text=(
+            f"Записала тему: «{topic}» ✨\n\n"
+            "Теперь напиши Венере слово «диагностика» и эту тему. Она подтвердит удобное время.\n\n"
+            "Рассказывать о своей ситуации заранее не нужно: сначала диагностика, потом разговор."
         ),
         reply_markup=InlineKeyboardMarkup([[
             InlineKeyboardButton("💬 Написать Венере", url=LINK_VENERA)
         ]])
     )
-    await notify_admin(context.bot, "🔔 Хочет бесплатную диагностику\n" + who(query.from_user))
+    await notify_admin(context.bot, f"📝 Тема диагностики: {topic}\n" + who(query.from_user))
 
 
 async def want_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1738,6 +1776,7 @@ async def ut_free_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def ut_register(app):
     app.add_handler(CallbackQueryHandler(ut_on_answer, pattern="^ut[0-9]+_[АБВГД]$"))
     app.add_handler(CallbackQueryHandler(diag_signup, pattern="^diag_signup$"))
+    app.add_handler(CallbackQueryHandler(diag_topic, pattern="^diag_topic_"))
     app.add_handler(CallbackQueryHandler(want_callback, pattern="^want_(money|razbor)$"))
     app.add_handler(CommandHandler("admin", admin_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
